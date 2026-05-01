@@ -1,0 +1,189 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:wght@400;600;700;800&family=Nunito:wght@400;600;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=Public+Sans:wght@300;400;500;600;700;800&display=swap');
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --chart-1: 221 83% 53%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Manrope', sans-serif;
+  }
+}
+
+@layer base {
+  [data-debug-wrapper="true"] {
+    display: contents !important;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--secondary));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground));
+  border-radius: 3px;
+}
+
+/* Smooth transitions for interactive elements */
+button, a, input, select, textarea {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+/* Entrance animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+/* ── Salon Theme: Playful bouncy hover ── */
+@keyframes bounceIn {
+  0% { transform: scale(0.95); opacity: 0; }
+  60% { transform: scale(1.02); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.playful-card {
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
+}
+.playful-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(255, 107, 157, 0.2);
+}
+.playful-bounce-in {
+  animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* ── Salon Theme: Luxe editorial hover ── */
+.luxe-card {
+  transition: transform 0.5s ease, box-shadow 0.5s ease;
+}
+.luxe-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(26, 26, 46, 0.12);
+}
+
+/* ── Salon Theme: Warm organic shapes ── */
+.warm-blob {
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+}
+.warm-blob-alt {
+  border-radius: 40% 60% 70% 30% / 30% 70% 40% 60%;
+}
+.warm-card {
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+.warm-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 32px rgba(217, 119, 6, 0.12);
+}
+
+/* ── Salon Theme: Clean subtle hover ── */
+.clean-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.clean-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.08);
+}
+
+/* ── Salon Theme: Playful floating animation ── */
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(3deg); }
+}
+.playful-float {
+  animation: float 4s ease-in-out infinite;
+}
+.playful-float-delayed {
+  animation: float 5s ease-in-out 1s infinite;
+}
+
+/* ── Salon Theme: Luxe gold shimmer ── */
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.luxe-shimmer {
+  background: linear-gradient(90deg, #c9a96e 0%, #e8d5a8 40%, #c9a96e 60%, #e8d5a8 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* ── Salon Theme: Warm pulse glow ── */
+@keyframes warmGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.15); }
+  50% { box-shadow: 0 0 0 8px rgba(217, 119, 6, 0); }
+}
+.warm-glow {
+  animation: warmGlow 2.5s ease-in-out infinite;
+}
+
+/* Hide scrollbar for horizontal scroll */
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}

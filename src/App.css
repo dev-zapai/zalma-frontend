@@ -1,0 +1,22 @@
+/* Global app overrides */
+
+/* Print mode: hide sidebar, header, and any element with print:hidden class.
+   The receipt page uses this so only the receipt card prints cleanly. */
+@media print {
+  /* Tailwind print:hidden utility uses this, but we also force the sidebar
+     and top bar to hide so the receipt page prints standalone. */
+  .print\:hidden,
+  aside,
+  header,
+  nav {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  /* Remove page margins for clean receipt output */
+  @page {
+    margin: 1cm;
+  }
+}
