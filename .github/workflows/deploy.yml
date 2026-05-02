@@ -22,13 +22,15 @@ jobs:
       - name: Validate required frontend env
         env:
           REACT_APP_BACKEND_URL: ${{ secrets.REACT_APP_BACKEND_URL }}
-          REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
-          REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          REACT_APP_STRIPE_PUBLISHABLE_KEY: ${{ secrets.REACT_APP_STRIPE_PUBLISHABLE_KEY }}
+          REACT_APP_MARKETING_URL: ${{ secrets.REACT_APP_MARKETING_URL }}
+          REACT_APP_SITE_URL: ${{ secrets.REACT_APP_SITE_URL }}
         run: |
           missing=0
           [ -n "$REACT_APP_BACKEND_URL" ] || { echo "Missing secret: REACT_APP_BACKEND_URL"; missing=1; }
-          [ -n "$REACT_APP_SUPABASE_URL" ] || { echo "Missing secret: REACT_APP_SUPABASE_URL"; missing=1; }
-          [ -n "$REACT_APP_SUPABASE_ANON_KEY" ] || { echo "Missing secret: REACT_APP_SUPABASE_ANON_KEY"; missing=1; }
+          [ -n "$REACT_APP_STRIPE_PUBLISHABLE_KEY" ] || { echo "Missing secret: REACT_APP_STRIPE_PUBLISHABLE_KEY"; missing=1; }
+          [ -n "$REACT_APP_MARKETING_URL" ] || { echo "Missing secret: REACT_APP_MARKETING_URL"; missing=1; }
+          [ -n "$REACT_APP_SITE_URL" ] || { echo "Missing secret: REACT_APP_SITE_URL"; missing=1; }
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
@@ -39,8 +41,9 @@ jobs:
       - name: Build
         env:
           REACT_APP_BACKEND_URL: ${{ secrets.REACT_APP_BACKEND_URL }}
-          REACT_APP_SUPABASE_URL: ${{ secrets.REACT_APP_SUPABASE_URL }}
-          REACT_APP_SUPABASE_ANON_KEY: ${{ secrets.REACT_APP_SUPABASE_ANON_KEY }}
+          REACT_APP_STRIPE_PUBLISHABLE_KEY: ${{ secrets.REACT_APP_STRIPE_PUBLISHABLE_KEY }}
+          REACT_APP_MARKETING_URL: ${{ secrets.REACT_APP_MARKETING_URL }}
+          REACT_APP_SITE_URL: ${{ secrets.REACT_APP_SITE_URL }}
           CI: false
         run: yarn build
 
