@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { useAuth } from '@/features/auth/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -14,6 +15,7 @@ import { toast } from 'sonner';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const { fetchProfile } = useAuth();
   const photoInputRef = useRef(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -62,11 +64,12 @@ export default function ProfilePage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await api.post('/profile/photo', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      // Don't set Content-Type — axios derives `multipart/form-data; boundary=...` from FormData.
+      const res = await api.post('/profile/photo', formData);
       setData(prev => ({ ...prev, photo_url: res.data.url }));
       setForm(prev => ({ ...prev, photo_url: res.data.url }));
+      // Refresh AuthContext profile so the sidebar avatar updates immediately.
+      await fetchProfile();
       toast.success('Photo uploaded');
     } catch (err) {
       toast.error('Failed to upload photo');
@@ -80,6 +83,7 @@ export default function ProfilePage() {
       await api.delete('/profile/photo');
       setData(prev => ({ ...prev, photo_url: null }));
       setForm(prev => ({ ...prev, photo_url: null }));
+      await fetchProfile();
       toast.success('Photo removed');
     } catch (err) {
       toast.error('Failed to remove photo');

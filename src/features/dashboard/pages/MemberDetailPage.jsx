@@ -48,7 +48,7 @@ const KPI_RANGES = [
 export default function MemberDetailPage() {
   const { memberId } = useParams();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, fetchProfile } = useAuth();
   const currentIsAdmin = profile?.is_admin || profile?.role === 'admin';
 
   const [member, setMember] = useState(null);
@@ -396,6 +396,11 @@ export default function MemberDetailPage() {
                   try {
                     const res = await api.put(`/staff/${memberId}/photo`, formData);
                     setMember(m => ({ ...m, photo_url: res.data.photo_url }));
+                    // If this staff record is linked to the logged-in user, refresh
+                    // AuthContext profile so the sidebar avatar updates immediately.
+                    if (memberUser?.id === profile?.id) {
+                      await fetchProfile();
+                    }
                     toast.success('Photo updated');
                   } catch (err) {
                     toast.error('Failed to upload photo');
