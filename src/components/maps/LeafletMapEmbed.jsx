@@ -81,9 +81,6 @@ export default function LeafletMapEmbed({ lat, lng, salonName, themeColor, slug 
               {salon.address && <><br /><span className="text-xs text-slate-500">{salon.address}</span></>}
               {salon.distance_km != null && <><br /><span className="text-xs text-slate-400">{salon.distance_km} km away</span></>}
               <br />
-              {/* Use getTenantSiteUrl so the link includes the /zalma
-                  prefix in production - a bare /s/{slug} would 404 because
-                  the app is hosted under PUBLIC_URL=/zalma. */}
               <a
                 href={getTenantSiteUrl(salon.slug)}
                 className="text-xs font-semibold"

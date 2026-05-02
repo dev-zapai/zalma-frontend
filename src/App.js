@@ -5,7 +5,11 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { Toaster } from "sonner";
 import api from "@/lib/api";
 
+import ScrollToTop from "@/components/ScrollToTop";
 import PetGroomingLandingPage from "@/pages/PetGroomingLandingPage";
+import AboutPage from "@/pages/AboutPage";
+import FAQPage from "@/pages/FAQPage";
+import PrivacyPage from "@/pages/PrivacyPage";
 import ContactPage from "@/pages/ContactPage";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
@@ -125,11 +129,15 @@ function PublicRoute({ children }) {
 
 function App() {
   return (
-    <BrowserRouter basename="/zalma">
+    <BrowserRouter>
       <AuthProvider>
+        <ScrollToTop />
         <Routes>
-          {/* Grooming product landing (zapai.com.au/zalma) */}
+          {/* Grooming product landing (zalma.com.au) */}
           <Route path="/" element={<PetGroomingLandingPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/faq" element={<FAQPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
           <Route path="/register" element={<RegisterPage />} />
@@ -140,7 +148,7 @@ function App() {
           <Route path="/change-password" element={<ChangePasswordPage />} />
 
           {/* Public salon website — multi-page (no auth required)
-              Lives under /zalma/s/:slug — customers book here */}
+              Lives under /s/:slug — customers book here */}
           <Route path="/s/:slug" element={<SalonWebsiteLayout />}>
             <Route index element={<SalonHomePage />} />
             <Route path="services" element={<SalonServicesPage />} />
@@ -150,7 +158,7 @@ function App() {
             <Route path="book" element={<SalonBookPage />} />
           </Route>
 
-          {/* Salon owner dashboard (zapai.com.au/zalma/dashboard) */}
+          {/* Salon owner dashboard (zalma.com.au/dashboard) */}
           <Route path="/dashboard" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
             <Route index element={<OverviewPage />} />
             <Route path="availability" element={<AvailabilityPage />} />

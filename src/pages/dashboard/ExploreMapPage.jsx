@@ -568,7 +568,7 @@ export default function ExploreMapPage() {
                       {salon.distance_km != null && <p style={{ fontSize: '10px', color: '#94A3B8' }}>{salon.distance_km} km away</p>}
                       {salon.slug && salon.is_published && (
                         <a
-                          href={`/zalma/s/${salon.slug}`}
+                          href={`/s/${salon.slug}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{ fontSize: '11px', fontWeight: 600, color: '#7C3AED', display: 'inline-block', marginTop: '4px' }}

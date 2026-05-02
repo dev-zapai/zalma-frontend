@@ -703,7 +703,7 @@ export default function BillingPage() {
                     {minimum > 0
                       ? <>Monthly minimum <strong>A${minimum.toFixed(0)}</strong>
                           <a
-                            href="/zalma/terms#billing"
+                            href="/terms#billing"
                             target="_blank"
                             rel="noreferrer"
                             title="Terms & Conditions apply"
@@ -773,7 +773,7 @@ export default function BillingPage() {
           <p className="text-center text-xs text-slate-400 mb-8">
             *{' '}
             <a
-              href="/zalma/terms#billing"
+              href="/terms#billing"
               target="_blank"
               rel="noreferrer"
               className="text-primary hover:underline"

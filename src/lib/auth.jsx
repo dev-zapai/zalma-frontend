@@ -88,7 +88,7 @@ export function AuthProvider({ children }) {
       // Redirect to the change-password page so the user can set a new password
       // while the recovery session is still active.
       if (event === 'PASSWORD_RECOVERY') {
-        window.location.replace('/zalma/change-password');
+        window.location.replace('/change-password');
       }
     });
 

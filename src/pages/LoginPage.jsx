@@ -52,7 +52,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/zalma/change-password`,
+      redirectTo: `${window.location.origin}/change-password`,
     });
     setLoading(false);
     if (err) {

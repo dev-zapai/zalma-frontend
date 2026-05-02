@@ -4,65 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  Menu, X, ArrowRight, Scissors, Sparkles,
+  ArrowRight, Scissors, Sparkles,
   Check, Calendar, Users, BarChart3, Shield, Star,
   MessageSquare, ChevronRight, ClipboardList, TrendingUp,
   Phone, PawPrint, Heart, Clock, Play
 } from 'lucide-react';
 
+import PublicNavbar from '@/components/PublicNavbar';
 import Footer from '@/components/Footer';
-
-const LOGO_SRC = `${process.env.PUBLIC_URL || ''}/zalma_logo.png`;
-
-const NAV_ITEMS = [
-  { label: 'Features', href: '#features' },
-  { label: 'Pricing', href: '#pricing' },
-  { label: 'Testimonials', href: '#testimonials' },
-  { label: 'Contact', href: '/contact' },
-];
-
-/* ─────────────────── NAVBAR ─────────────────── */
-function Navbar() {
-  const [open, setOpen] = useState(false);
-  return (
-    <nav className="sticky top-0 z-50 backdrop-blur-xl border-b" style={{ background: 'rgba(255,255,255,0.85)', borderColor: 'rgba(0,0,0,0.04)' }}>
-      <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center">
-          <img src={LOGO_SRC} alt="Zalma" style={{ height: '28px', width: 'auto' }} />
-        </Link>
-        <div className="hidden md:flex items-center gap-8">
-          {NAV_ITEMS.map(i => (
-            i.href.startsWith('/')
-              ? <Link key={i.label} to={i.href} className="text-[13px] font-medium text-gray-400 hover:text-gray-800 transition-colors">{i.label}</Link>
-              : <a key={i.label} href={i.href} className="text-[13px] font-medium text-gray-400 hover:text-gray-800 transition-colors">{i.label}</a>
-          ))}
-        </div>
-        <div className="hidden md:flex items-center gap-3">
-          <Button variant="outline" asChild className="rounded-full px-5 h-9 text-[13px] font-medium border-gray-200 text-gray-600">
-            <Link to="/login">Login</Link>
-          </Button>
-          <Button asChild className="rounded-full px-5 h-9 text-[13px] font-medium bg-gray-900 text-white hover:bg-gray-800">
-            <Link to="/register">Get Started</Link>
-          </Button>
-        </div>
-        <button className="md:hidden" onClick={() => setOpen(!open)}>
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-      </div>
-      {open && (
-        <div className="md:hidden border-t border-gray-100 px-4 py-4 space-y-3 bg-white">
-          {NAV_ITEMS.map(i => (
-            <a key={i.label} href={i.href} className="block text-sm font-medium text-gray-500" onClick={() => setOpen(false)}>{i.label}</a>
-          ))}
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" asChild className="flex-1 w-full rounded-full"><Link to="/login">Login</Link></Button>
-            <Button asChild className="flex-1 w-full rounded-full bg-gray-900 text-white"><Link to="/register">Get Started</Link></Button>
-          </div>
-        </div>
-      )}
-    </nav>
-  );
-}
 
 /* ─────────────────── HERO ─────────────────── */
 function HeroSection() {
@@ -96,7 +45,7 @@ function HeroSection() {
           </p>
 
           <div className="flex items-center gap-5 flex-wrap">
-            <a href="/zalma/contact">
+            <a href="/contact">
               <Button size="lg" className="rounded-full px-8 h-12 text-base font-semibold shadow-lg bg-gray-900 text-white hover:bg-gray-800">
                 Book a Demo
               </Button>
@@ -213,25 +162,39 @@ function FeaturesSection() {
   ];
 
   return (
-    <section id="features" className="py-28" style={{ background: '#f8f8ff' }}>
-      <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8">
-        <div className="text-center mb-16">
-          <span className="inline-block text-[12px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">Features</span>
-          <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 mb-4" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-            Built for Pet Groomers
-          </h2>
-          <p className="text-base md:text-lg text-gray-400 max-w-2xl mx-auto font-light">
-            Every feature designed to make your grooming salon run smoothly, from the first booking to the final brushstroke.
-          </p>
+    <section id="features" className="py-28 bg-white">
+      <div className="w-full max-w-[1200px] mx-auto px-4 md:px-8">
+        <div className="grid md:grid-cols-12 gap-10 mb-16">
+          <div className="md:col-span-5">
+            <span className="inline-block text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">Features</span>
+            <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 leading-[1.1]" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+              Built for pet groomers.
+            </h2>
+          </div>
+          <div className="md:col-span-7 flex md:items-end">
+            <p className="text-base md:text-lg text-gray-500 leading-relaxed font-light">
+              Every feature designed to make your grooming salon run smoothly, from the first booking to the final brushstroke.
+            </p>
+          </div>
         </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-12">
           {features.map((f, i) => (
-            <div key={i} className="group rounded-2xl bg-white p-7 shadow-sm hover:shadow-lg transition-shadow">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-5 bg-indigo-50 group-hover:bg-indigo-100 transition-colors">
-                <f.icon className="h-5 w-5 text-indigo-400" />
+            <div key={i} className="group relative">
+              <div className="flex items-center gap-3 mb-5">
+                <span className="text-[12px] font-black tracking-[0.2em] text-indigo-400" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <span className="h-px flex-1 bg-gray-200" />
+                <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                  <f.icon className="h-4 w-4 text-indigo-400" />
+                </div>
               </div>
-              <h3 className="text-[16px] font-bold text-gray-900 mb-2" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>{f.title}</h3>
-              <p className="text-[14px] leading-relaxed text-gray-400">{f.desc}</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-2.5" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+                {f.title}
+              </h3>
+              <p className="text-base text-gray-500 leading-relaxed font-light">
+                {f.desc}
+              </p>
             </div>
           ))}
         </div>
@@ -427,6 +390,7 @@ function CTASection() {
           src="https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=1600&q=85"
           alt="Two dogs walking together"
           className="w-full h-full object-cover"
+          style={{ objectPosition: 'center 25%' }}
         />
         <div className="absolute inset-0" style={{ background: 'linear-gradient(110deg, rgba(255,255,255,0.97) 0%, rgba(255,255,255,0.92) 40%, rgba(255,255,255,0.4) 65%, rgba(255,255,255,0.1) 100%)' }} />
       </div>
@@ -446,7 +410,7 @@ function CTASection() {
                 Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-            <a href="/zalma/contact">
+            <a href="/contact">
               <Button variant="outline" size="lg" className="rounded-full px-8 h-12 text-base font-semibold border-gray-200 text-gray-600 hover:bg-gray-50">
                 Book a Demo
               </Button>
@@ -462,7 +426,7 @@ function CTASection() {
 export default function PetGroomingLandingPage() {
   return (
     <div className="min-h-screen bg-white">
-      <Navbar />
+      <PublicNavbar />
       <HeroSection />
       <AIFeaturesSection />
       <FeaturesSection />
