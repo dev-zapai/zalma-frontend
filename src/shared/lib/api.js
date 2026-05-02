@@ -4,8 +4,12 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 const api = axios.create({
   baseURL: `${BACKEND_URL}/api`,
-  headers: { 'Content-Type': 'application/json' },
-  // Send and accept HttpOnly session cookies set by the backend.
+  // Don't set a default Content-Type. axios will pick the correct one per
+  // request body type:
+  //   - plain object  → application/json
+  //   - FormData      → multipart/form-data; boundary=...
+  // A hard-coded default would override FormData's auto-boundary and break
+  // multipart uploads (see /auth/upload-logo).
   withCredentials: true,
 });
 

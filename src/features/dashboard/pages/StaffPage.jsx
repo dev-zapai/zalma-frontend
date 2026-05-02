@@ -34,7 +34,7 @@ function KpiCard({ label, value, icon: Icon, color = 'text-primary' }) {
 
 /* ── Staff table ────────────────────────────────────────────────────────────── */
 
-function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sortBy, sortDir, onSort }) {
+function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sortBy, sortDir, onSort, tenantRoles = [] }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -398,6 +398,7 @@ export default function StaffPage() {
         sortBy={sortBy}
         sortDir={sortDir}
         onSort={handleSort}
+        tenantRoles={tenantRoles}
       />
 
       <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>

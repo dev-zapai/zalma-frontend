@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/features/auth/AuthContext';
-import { supabase } from '@/shared/lib/supabase'; // storage only (logo upload)
 import api from '@/shared/lib/api';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -135,12 +134,12 @@ export default function RegisterPage() {
     if (!file) return;
     setUploading(true);
     try {
-      const ext = file.name.split('.').pop();
-      const path = `logos/${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from('clinic-assets').upload(path, file);
-      if (uploadErr) throw uploadErr;
-      const { data: urlData } = supabase.storage.from('clinic-assets').getPublicUrl(path);
-      setSalonForm(f => ({ ...f, logo_url: urlData.publicUrl }));
+      const formData = new FormData();
+      formData.append('file', file);
+      // Don't set Content-Type manually — axios auto-detects FormData and
+      // emits `multipart/form-data; boundary=...` with the correct boundary.
+      const res = await api.post('/auth/upload-logo', formData);
+      setSalonForm(f => ({ ...f, logo_url: res.data.url }));
     } catch (err) {
       console.error('Upload failed:', err);
     }
