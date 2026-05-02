@@ -493,7 +493,8 @@ export default function MemberDetailPage() {
           </CardContent>
         </Card>
 
-        {/* ── Employment & Compensation (admin-only edits) ── */}
+        {/* ── Employment & Compensation (visible to admin/owner OR self only) ── */}
+        {canManage && (
         <Card className="rounded-xl border-slate-200/60 flex flex-col">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -588,6 +589,7 @@ export default function MemberDetailPage() {
             )}
           </CardContent>
         </Card>
+        )}
 
         {/* ── Role ── */}
         <Card className="rounded-xl border-slate-200/60 flex flex-col">
