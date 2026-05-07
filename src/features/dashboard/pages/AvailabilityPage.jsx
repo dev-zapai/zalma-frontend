@@ -112,13 +112,18 @@ export default function AvailabilityPage() {
         }}
         title={isOff ? 'Staff is unavailable' : 'Click to book on this day'}
       >
-        {/* Hour grid lines */}
+        {/* Grid lines — solid at every hour, dashed at every :30 */}
         {HOURS.map((h, i) => (
-          <div
-            key={h}
-            className="absolute left-0 right-0 border-t border-slate-100"
-            style={{ top: `${i * ROW_HEIGHT}px` }}
-          />
+          <React.Fragment key={h}>
+            <div
+              className="absolute left-0 right-0 border-t border-slate-200"
+              style={{ top: `${i * ROW_HEIGHT}px` }}
+            />
+            <div
+              className="absolute left-0 right-0 border-t border-dashed border-slate-100"
+              style={{ top: `${i * ROW_HEIGHT + ROW_HEIGHT / 2}px` }}
+            />
+          </React.Fragment>
         ))}
 
         {/* Blocks */}
@@ -311,13 +316,23 @@ export default function AvailabilityPage() {
                               : h < 12 ? `${h}am`
                               : `${h - 12}pm`;
                             return (
-                              <div
-                                key={h}
-                                className="absolute right-2 text-[10px] text-slate-400 -translate-y-1/2"
-                                style={{ top: `${i * ROW_HEIGHT}px` }}
-                              >
-                                {label}
-                              </div>
+                              <React.Fragment key={h}>
+                                <div
+                                  className="absolute right-2 text-[10px] text-slate-400 -translate-y-1/2"
+                                  style={{ top: `${i * ROW_HEIGHT}px` }}
+                                >
+                                  {label}
+                                </div>
+                                {/* :30 tick — only render if it fits inside the visible range */}
+                                {i < HOURS.length - 1 && (
+                                  <div
+                                    className="absolute right-2 text-[9px] text-slate-300 -translate-y-1/2"
+                                    style={{ top: `${i * ROW_HEIGHT + ROW_HEIGHT / 2}px` }}
+                                  >
+                                    :30
+                                  </div>
+                                )}
+                              </React.Fragment>
                             );
                           })}
                         </div>
