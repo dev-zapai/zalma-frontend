@@ -328,23 +328,13 @@ export default function AvailabilityPage() {
                               : h < 12 ? `${h}am`
                               : `${h - 12}pm`;
                             return (
-                              <React.Fragment key={h}>
-                                <div
-                                  className="absolute right-2 text-[10px] text-slate-400 -translate-y-1/2"
-                                  style={{ top: `${i * ROW_HEIGHT}px` }}
-                                >
-                                  {label}
-                                </div>
-                                {/* :30 tick — only render if it fits inside the visible range */}
-                                {i < HOURS.length - 1 && (
-                                  <div
-                                    className="absolute right-2 text-[9px] text-slate-300 -translate-y-1/2"
-                                    style={{ top: `${i * ROW_HEIGHT + ROW_HEIGHT / 2}px` }}
-                                  >
-                                    :30
-                                  </div>
-                                )}
-                              </React.Fragment>
+                              <div
+                                key={h}
+                                className="absolute right-2 text-[10px] text-slate-400 -translate-y-1/2"
+                                style={{ top: `${i * ROW_HEIGHT}px` }}
+                              >
+                                {label}
+                              </div>
                             );
                           })}
                         </div>
