@@ -690,7 +690,14 @@ export default function StaffPage() {
             <div><Label>Email *</Label><Input type="email" value={memberForm.email} onChange={e => setMemberForm({ ...memberForm, email: e.target.value })} className="mt-1.5" /></div>
             <div>
               <Label>Temporary Password *</Label>
-              <Input type="text" value={memberForm.temp_password} onChange={e => setMemberForm({ ...memberForm, temp_password: e.target.value })} placeholder="Min 6 characters" className="mt-1.5" />
+              <Input
+                type="password"
+                autoComplete="new-password"
+                value={memberForm.temp_password}
+                onChange={e => setMemberForm({ ...memberForm, temp_password: e.target.value })}
+                placeholder="Min 6 characters"
+                className="mt-1.5"
+              />
               <p className="text-xs text-slate-400 mt-1">Member will be asked to change this on first login</p>
             </div>
             <div>

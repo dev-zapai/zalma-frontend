@@ -27,6 +27,52 @@ const DAYS_OF_WEEK = [
   { idx: 6, label: 'Sun' },
 ];
 
+// Hour/minute options for the Working Hours dropdowns. Hours run 06:00–22:00
+// (the salon operating envelope) in the format the backend expects ("HH:MM").
+const HOUR_OPTIONS = Array.from({ length: 17 }, (_, i) => {
+  const h = i + 6;
+  return { value: String(h).padStart(2, '0'), label: String(h).padStart(2, '0') };
+});
+const MINUTE_OPTIONS = ['00', '15', '30', '45'].map(m => ({ value: m, label: m }));
+
+/**
+ * Two-dropdown time picker (hour + minute). Replaces native <input type="time">
+ * because that renders inconsistently across browsers (sometimes a stepper,
+ * sometimes a tiny popup) and the user kept saying "give me the dropdown back".
+ *
+ * value: "HH:MM" string. onChange called with the same shape.
+ */
+function TimePicker({ value, onChange, disabled }) {
+  const [h, m] = (value || '').split(':');
+  const hour = h && HOUR_OPTIONS.find(o => o.value === h.padStart(2, '0'))?.value;
+  const minute = m && MINUTE_OPTIONS.find(o => o.value === m.padStart(2, '0'))?.value;
+  return (
+    <div className="flex items-center gap-1">
+      <Select
+        value={hour || ''}
+        onValueChange={(v) => onChange(`${v}:${minute || '00'}`)}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-8 w-[64px] text-xs"><SelectValue placeholder="HH" /></SelectTrigger>
+        <SelectContent className="max-h-60">
+          {HOUR_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <span className="text-slate-400 text-xs">:</span>
+      <Select
+        value={minute || ''}
+        onValueChange={(v) => onChange(`${hour || '09'}:${v}`)}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-8 w-[64px] text-xs"><SelectValue placeholder="MM" /></SelectTrigger>
+        <SelectContent>
+          {MINUTE_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 const STATUS_STYLES = {
   scheduled: 'bg-primary/15 text-primary',
   confirmed: 'bg-emerald-100 text-emerald-700',
@@ -226,13 +272,67 @@ export default function MemberDetailPage() {
   const handleSaveSchedule = async () => {
     setSavingSchedule(true);
     try {
-      const entries = DAYS_OF_WEEK.filter(d => schedule[d.idx]?.enabled).map(d => {
+      // Build entries + validate client-side before round-tripping
+      const entries = [];
+      for (const d of DAYS_OF_WEEK) {
         const row = schedule[d.idx];
-        return { day_of_week: d.idx, start_time: row.start, end_time: row.end, break_start: row.break_start || null, break_end: row.break_end || null };
-      });
+        if (!row?.enabled) continue;
+        if (!row.start || !row.end) {
+          toast.error(`${d.label}: please pick both start and end time`);
+          setSavingSchedule(false); return;
+        }
+        if (row.start >= row.end) {
+          toast.error(`${d.label}: end time must be after start time`);
+          setSavingSchedule(false); return;
+        }
+        // Break: both or neither
+        const hasBreakStart = !!row.break_start;
+        const hasBreakEnd = !!row.break_end;
+        if (hasBreakStart !== hasBreakEnd) {
+          toast.error(`${d.label}: set both break start and break end (or clear both)`);
+          setSavingSchedule(false); return;
+        }
+        if (hasBreakStart && hasBreakEnd && row.break_start >= row.break_end) {
+          toast.error(`${d.label}: break end must be after break start`);
+          setSavingSchedule(false); return;
+        }
+        entries.push({
+          day_of_week: d.idx,
+          start_time: row.start,
+          end_time: row.end,
+          break_start: row.break_start || null,
+          break_end: row.break_end || null,
+        });
+      }
+
       await api.put(`/availability/staff/${memberId}/schedule`, { entries });
-      toast.success('Working hours updated');
-    } catch (e) { toast.error(e.response?.data?.detail || 'Failed to save'); }
+      toast.success(
+        entries.length > 0
+          ? `Working hours saved (${entries.length} day${entries.length > 1 ? 's' : ''} open)`
+          : 'Working hours cleared — all days closed'
+      );
+
+      // Re-fetch the saved schedule so what's on screen matches what's in the DB
+      try {
+        const schedRes = await api.get(`/availability/staff/${memberId}/schedule`);
+        const map = {};
+        DAYS_OF_WEEK.forEach(d => {
+          const row = (schedRes.data || []).find(r => r.day_of_week === d.idx);
+          map[d.idx] = row
+            ? {
+                enabled: true,
+                start: row.start_time || '09:00',
+                end: row.end_time || '17:00',
+                break_start: row.break_start || '',
+                break_end: row.break_end || '',
+              }
+            : { enabled: false, start: '09:00', end: '17:00', break_start: '', break_end: '' };
+        });
+        setSchedule(map);
+      } catch { /* tolerate */ }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Failed to save');
+    }
     setSavingSchedule(false);
   };
 
@@ -901,26 +1001,71 @@ export default function MemberDetailPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-slate-500 mb-3">Default weekly schedule. Slots during your break are protected from bookings.</p>
+              <p className="text-xs text-slate-500 mb-3">
+                Default weekly schedule. Toggle a day on, then pick start/end times. Break time is protected from bookings.
+              </p>
               <div className="space-y-2">
                 {DAYS_OF_WEEK.map(d => {
-                  const row = schedule[d.idx] || {};
+                  const row = schedule[d.idx] || { enabled: false, start: '09:00', end: '17:00', break_start: '', break_end: '' };
                   return (
-                    <div key={d.idx} className={`p-2 rounded-md border ${row.enabled ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50/50'}`}>
-                      <div className="grid grid-cols-[44px_56px_1fr_1fr] gap-2 items-center">
-                        <span className="text-xs font-medium text-slate-700">{d.label}</span>
-                        <Button variant={row.enabled ? 'default' : 'outline'} size="sm" className={`h-7 text-[10px] px-1 ${row.enabled ? 'bg-primary text-primary-foreground' : ''}`}
-                          onClick={() => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], enabled: !s[d.idx]?.enabled } }))}>
-                          {row.enabled ? <CheckIcon className="h-3 w-3" /> : 'Off'}
-                        </Button>
-                        <Input type="time" value={row.start || ''} disabled={!row.enabled} onChange={e => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], start: e.target.value } }))} className="h-7 text-xs" />
-                        <Input type="time" value={row.end || ''} disabled={!row.enabled} onChange={e => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], end: e.target.value } }))} className="h-7 text-xs" />
+                    <div
+                      key={d.idx}
+                      className={`p-3 rounded-lg border transition-colors ${row.enabled ? 'border-primary/30 bg-primary/5' : 'border-slate-200 bg-slate-50/50'}`}
+                    >
+                      {/* Row 1: day label + Switch toggle + working hours pickers */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-[100px]">
+                          <span className="text-sm font-semibold text-slate-700 w-10">{d.label}</span>
+                          <Switch
+                            checked={!!row.enabled}
+                            onCheckedChange={(v) => setSchedule(s => ({
+                              ...s,
+                              [d.idx]: { ...(s[d.idx] || { start: '09:00', end: '17:00', break_start: '', break_end: '' }), enabled: v },
+                            }))}
+                          />
+                          <span className={`text-xs ${row.enabled ? 'text-emerald-700 font-medium' : 'text-slate-400'}`}>
+                            {row.enabled ? 'Open' : 'Closed'}
+                          </span>
+                        </div>
+                        {row.enabled && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-slate-500">From</span>
+                            <TimePicker
+                              value={row.start || '09:00'}
+                              onChange={(v) => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], start: v } }))}
+                            />
+                            <span className="text-xs text-slate-500">To</span>
+                            <TimePicker
+                              value={row.end || '17:00'}
+                              onChange={(v) => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], end: v } }))}
+                            />
+                          </div>
+                        )}
                       </div>
+
+                      {/* Row 2: break time (only when day is open) */}
                       {row.enabled && (
-                        <div className="grid grid-cols-[44px_56px_1fr_1fr] gap-2 items-center mt-1.5">
-                          <span className="text-[10px] text-slate-400">Break</span><span />
-                          <Input type="time" value={row.break_start || ''} onChange={e => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], break_start: e.target.value } }))} className="h-7 text-xs" />
-                          <Input type="time" value={row.break_end || ''} onChange={e => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], break_end: e.target.value } }))} className="h-7 text-xs" />
+                        <div className="flex items-center gap-2 flex-wrap mt-2 pl-[112px]">
+                          <span className="text-[11px] text-slate-500 w-12">Break</span>
+                          <TimePicker
+                            value={row.break_start || ''}
+                            onChange={(v) => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], break_start: v } }))}
+                          />
+                          <span className="text-xs text-slate-400">–</span>
+                          <TimePicker
+                            value={row.break_end || ''}
+                            onChange={(v) => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], break_end: v } }))}
+                          />
+                          {(row.break_start || row.break_end) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[10px] text-slate-400 hover:text-slate-700"
+                              onClick={() => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], break_start: '', break_end: '' } }))}
+                            >
+                              clear break
+                            </Button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -928,7 +1073,11 @@ export default function MemberDetailPage() {
                 })}
               </div>
               <div className="mt-4 flex justify-end">
-                <Button onClick={handleSaveSchedule} disabled={savingSchedule} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Button
+                  onClick={handleSaveSchedule}
+                  disabled={savingSchedule}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                >
                   {savingSchedule ? 'Saving...' : 'Save Working Hours'}
                 </Button>
               </div>
