@@ -11,7 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/shared/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Badge } from '@/shared/components/ui/badge';
-import { Edit, Trash2, UserPlus, Mail, Phone, Shield, Search, Users, CalendarCheck, DollarSign, Activity, ArrowUpDown } from 'lucide-react';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+} from '@/shared/components/ui/dropdown-menu';
+import {
+  Edit, Trash2, UserPlus, Mail, Phone, Shield, Search, Users, CalendarCheck, DollarSign, Activity,
+  ArrowUpDown, MoreVertical, RotateCcw, PowerOff, Power, AlertTriangle, Crown, Archive,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { listItems } from '@/shared/lib/listResponse';
 import { formatPrice } from '@/shared/lib/currency';
@@ -34,7 +40,7 @@ function KpiCard({ label, value, icon: Icon, color = 'text-primary' }) {
 
 /* ── Staff table ────────────────────────────────────────────────────────────── */
 
-function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sortBy, sortDir, onSort, tenantRoles = [] }) {
+function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sortBy, sortDir, onSort, tenantRoles = [], ownerUserId, currentUserId, onChange }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -42,6 +48,11 @@ function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sor
   const [editUserId, setEditUserId] = useState(null);
   const [editIsAdmin, setEditIsAdmin] = useState(false);
   const [form, setForm] = useState({ full_name: '', email: '', phone: '', role: '' });
+
+  // ── Two-step delete confirmation ──
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, item: null });
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const fetchStaff = useCallback(async () => {
     try {
@@ -94,14 +105,51 @@ function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sor
     }
   };
 
-  const handleDelete = async (id, e) => {
+  const isOwner = (staff) => staff?.user_id && ownerUserId && staff.user_id === ownerUserId;
+  const isSelf = (staff) => staff?.user_id && currentUserId && staff.user_id === currentUserId;
+
+  const openDeleteDialog = (item, e) => {
     e?.stopPropagation();
-    if (!window.confirm('Delete this staff member?')) return;
+    if (isOwner(item)) {
+      toast.error('Cannot delete the salon owner. Transfer ownership first.');
+      return;
+    }
+    setDeleteDialog({ open: true, item });
+    setDeleteConfirmText('');
+  };
+
+  const handleDeleteConfirm = async () => {
+    const item = deleteDialog.item;
+    if (!item || deleteConfirmText !== 'DELETE') return;
+    setDeleting(true);
     try {
-      await api.delete(`/staff/${id}`);
+      const res = await api.delete(`/staff/${item.id}`);
+      const days = res.data?.days_to_restore || 30;
+      toast.success(`Moved to trash. Restorable for ${days} days.`);
+      setDeleteDialog({ open: false, item: null });
+      setDeleteConfirmText('');
       fetchStaff();
+      if (onChange) onChange();
     } catch (e) {
-      console.error(e);
+      toast.error(e.response?.data?.detail || 'Failed to delete');
+    }
+    setDeleting(false);
+  };
+
+  const handleToggleActive = async (item, e) => {
+    e?.stopPropagation();
+    if (isOwner(item)) {
+      toast.error('Cannot deactivate the salon owner');
+      return;
+    }
+    const action = item.is_active ? 'deactivate' : 'activate';
+    try {
+      await api.put(`/staff/${item.id}/${action}`);
+      toast.success(item.is_active ? 'Member deactivated — they cannot log in' : 'Member reactivated');
+      fetchStaff();
+      if (onChange) onChange();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || `Failed to ${action}`);
     }
   };
 
@@ -184,8 +232,44 @@ function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sor
                   </TableCell>
                   {isAdmin && (
                     <TableCell>
-                      <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" onClick={(e) => handleDelete(item.id, e)} className="text-red-500"><Trash2 className="h-4 w-4" /></Button>
+                      <div onClick={e => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            {isOwner(item) && (
+                              <DropdownMenuItem disabled className="text-amber-600 text-xs">
+                                <Crown className="h-3.5 w-3.5 mr-2" /> Salon Owner
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => navigate(`/dashboard/staff/member/${item.id}`)}>
+                              <Edit className="h-3.5 w-3.5 mr-2" /> View / Edit
+                            </DropdownMenuItem>
+                            {!isOwner(item) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                {item.is_active ? (
+                                  <DropdownMenuItem onClick={(e) => handleToggleActive(item, e)} className="text-amber-700">
+                                    <PowerOff className="h-3.5 w-3.5 mr-2" /> Deactivate
+                                    <span className="ml-auto text-[10px] text-slate-400">No login</span>
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem onClick={(e) => handleToggleActive(item, e)} className="text-emerald-700">
+                                    <Power className="h-3.5 w-3.5 mr-2" /> Reactivate
+                                  </DropdownMenuItem>
+                                )}
+                                {!isSelf(item) && (
+                                  <DropdownMenuItem onClick={(e) => openDeleteDialog(item, e)} className="text-red-600">
+                                    <Trash2 className="h-3.5 w-3.5 mr-2" /> Move to Trash
+                                  </DropdownMenuItem>
+                                )}
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   )}
@@ -240,7 +324,166 @@ function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sor
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── 2-step delete confirmation ── */}
+      <Dialog
+        open={deleteDialog.open}
+        onOpenChange={(o) => { if (!o) { setDeleteDialog({ open: false, item: null }); setDeleteConfirmText(''); } }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" /> Move to Trash
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-sm">
+            <p className="text-slate-700">
+              <strong>{deleteDialog.item?.full_name}</strong> will be moved to trash.
+            </p>
+            <ul className="text-xs text-slate-500 space-y-1.5 bg-slate-50 rounded-lg p-3">
+              <li>• They will <strong>not</strong> be able to log in</li>
+              <li>• Restorable from Trash for <strong>30 days</strong></li>
+              <li>• After 30 days the record is archived for audit (not restorable)</li>
+              <li>• Permanently purged after <strong>1 year</strong></li>
+            </ul>
+            <div>
+              <Label className="text-xs">
+                To confirm, type <span className="font-mono font-bold text-red-600">DELETE</span> below:
+              </Label>
+              <Input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="mt-1.5 font-mono"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteDialog({ open: false, item: null }); setDeleteConfirmText(''); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteConfirm}
+              disabled={deleteConfirmText !== 'DELETE' || deleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? 'Moving...' : 'Move to Trash'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
+  );
+}
+
+/* ── Trash dialog ───────────────────────────────────────────────────────────── */
+
+function TrashDialog({ open, onOpenChange, ownerUserId, onChange }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(null);
+
+  const fetchTrash = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/staff', { params: { include_deleted: true, limit: 200 } });
+      setItems(listItems(res.data));
+    } catch (e) {
+      toast.error('Failed to load trash');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (open) fetchTrash();
+  }, [open, fetchTrash]);
+
+  const handleRestore = async (item) => {
+    setRestoring(item.id);
+    try {
+      await api.post(`/staff/${item.id}/restore`);
+      toast.success(`${item.full_name} restored`);
+      fetchTrash();
+      if (onChange) onChange();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Restore failed');
+    }
+    setRestoring(null);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Archive className="h-5 w-5 text-slate-500" /> Trash
+            <span className="text-xs font-normal text-slate-400">
+              · 30 days to restore · 1 year audit retention
+            </span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="py-2 max-h-[60vh] overflow-y-auto">
+          {loading && (
+            <div className="text-center py-12 text-slate-400 text-sm">Loading...</div>
+          )}
+          {!loading && items.length === 0 && (
+            <div className="text-center py-12 text-slate-400">
+              <Archive className="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Trash is empty</p>
+            </div>
+          )}
+          {!loading && items.length > 0 && (
+            <div className="divide-y divide-slate-100">
+              {items.map(item => (
+                <div key={item.id} className="flex items-center gap-3 py-3">
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 opacity-60"
+                    style={{ backgroundColor: item.color || '#6366F1' }}
+                  >
+                    {item.full_name?.charAt(0)?.toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-700 line-through">{item.full_name}</p>
+                    <p className="text-xs text-slate-400">
+                      {item.role || '—'}
+                      {item.deleted_at && (
+                        <> · Deleted {new Date(item.deleted_at).toLocaleDateString()}</>
+                      )}
+                    </p>
+                  </div>
+                  {item.restorable ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-amber-600 font-medium">
+                        {Math.max(0, 30 - Math.floor((Date.now() - new Date(item.deleted_at).getTime()) / 86400000))}d to restore
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRestore(item)}
+                        disabled={restoring === item.id}
+                        className="h-7 text-xs"
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        {restoring === item.id ? 'Restoring...' : 'Restore'}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-end gap-0.5">
+                      <Badge className="bg-slate-100 text-slate-500 text-[10px] rounded-full">Archived</Badge>
+                      <span className="text-[10px] text-slate-400">{item.days_until_purge}d till purge</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -255,12 +498,26 @@ export default function StaffPage() {
   const [kpis, setKpis] = useState(null);
   const [currency, setCurrency] = useState('AUD');
   const [tenantRoles, setTenantRoles] = useState([]);
+  const [ownerUserId, setOwnerUserId] = useState(null);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashCount, setTrashCount] = useState(0);
+
   useEffect(() => {
     api.get('/staff/kpis').then(r => setKpis(r.data)).catch(() => {});
     api.get('/tenant/me').then(r => {
       setCurrency(r.data?.settings?.currency || 'AUD');
       setTenantRoles(r.data?.settings?.roles || []);
     }).catch(() => {});
+    // Find the owner via /members?is_owner=true (or fall back to checking users)
+    api.get('/members').then(r => {
+      const members = listItems(r.data);
+      const owner = members.find(m => m.is_owner);
+      setOwnerUserId(owner?.id || null);
+    }).catch(() => {});
+    // Trash count badge
+    api.get('/staff', { params: { include_deleted: true, limit: 1 } })
+      .then(r => setTrashCount(r.data?.total || 0))
+      .catch(() => setTrashCount(0));
   }, [refreshKey]);
 
   // Filters
@@ -331,9 +588,23 @@ export default function StaffPage() {
           <p className="text-sm text-slate-500 mt-1">Manage your grooming staff</p>
         </div>
         {isAdmin && (
-          <Button onClick={() => { resetMemberForm(); setAddMemberOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg">
-            <UserPlus className="h-4 w-4 mr-1.5" /> Add Member
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setTrashOpen(true)}
+              className="rounded-lg relative"
+            >
+              <Archive className="h-4 w-4 mr-1.5" /> Trash
+              {trashCount > 0 && (
+                <span className="ml-1.5 bg-slate-200 text-slate-700 text-[10px] font-semibold rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center">
+                  {trashCount}
+                </span>
+              )}
+            </Button>
+            <Button onClick={() => { resetMemberForm(); setAddMemberOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg">
+              <UserPlus className="h-4 w-4 mr-1.5" /> Add Member
+            </Button>
+          </div>
         )}
       </div>
 
@@ -399,6 +670,16 @@ export default function StaffPage() {
         sortDir={sortDir}
         onSort={handleSort}
         tenantRoles={tenantRoles}
+        ownerUserId={ownerUserId}
+        currentUserId={profile?.id}
+        onChange={() => setRefreshKey(k => k + 1)}
+      />
+
+      <TrashDialog
+        open={trashOpen}
+        onOpenChange={setTrashOpen}
+        ownerUserId={ownerUserId}
+        onChange={() => setRefreshKey(k => k + 1)}
       />
 
       <Dialog open={addMemberOpen} onOpenChange={setAddMemberOpen}>
