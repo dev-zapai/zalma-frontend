@@ -102,12 +102,34 @@ export default function AvailabilityPage() {
     // detail page (not on the calendar) so the calendar stays focused on
     // booking.
     const isOff = day.is_off;
+
+    // Grid lines via background-image so they paint as part of the column
+    // and can't be hidden by any other element / class. The cell is
+    // ROW_HEIGHT tall (one hour). We stack two repeating gradients:
+    //   * top of each cell  → solid 1px line (slate-400)   = the hour mark
+    //   * mid of each cell  → 1px dotted-style line (slate-300) = the :30 mark
+    // The mid-line is rendered as a stripe of "alternating-mid-pixel"
+    // colors so it reads as a half-hour indicator without requiring
+    // CSS dashed-border support.
+    const gridBackground = {
+      backgroundImage: [
+        // Solid hour line at row top
+        'linear-gradient(to bottom, rgb(148 163 184) 1px, transparent 1px)',
+        // Mid-row half-hour line
+        'linear-gradient(to bottom, transparent calc(50% - 1px), rgb(203 213 225) calc(50% - 1px), rgb(203 213 225) 50%, transparent 50%)',
+      ].join(', '),
+      backgroundSize: `100% ${ROW_HEIGHT}px, 100% ${ROW_HEIGHT}px`,
+      backgroundPosition: '0 0, 0 0',
+      backgroundRepeat: 'repeat-y',
+    };
+
     return (
       <div
         className={`relative ${isOff ? 'bg-slate-50/30 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50/40'} transition-colors`}
         style={{
           height: `${(HOUR_END - HOUR_START) * ROW_HEIGHT}px`,
-          borderLeft: '1px solid rgb(203 213 225)', // slate-300 — visible column separator
+          borderLeft: '1px solid rgb(148 163 184)', // slate-400 — clearly visible column separator
+          ...gridBackground,
         }}
         onClick={() => {
           if (isOff) return;
@@ -115,27 +137,6 @@ export default function AvailabilityPage() {
         }}
         title={isOff ? 'Staff is unavailable' : 'Click to book on this day'}
       >
-        {/* Grid lines — solid at every hour, dashed at every :30.
-            Use inline styles (not Tailwind classes) so the borders render
-            even if any utility class is purged or overridden. */}
-        {HOURS.map((h, i) => (
-          <React.Fragment key={h}>
-            <div
-              className="absolute left-0 right-0 pointer-events-none"
-              style={{
-                top: `${i * ROW_HEIGHT}px`,
-                borderTop: '1px solid rgb(203 213 225)', // slate-300
-              }}
-            />
-            <div
-              className="absolute left-0 right-0 pointer-events-none"
-              style={{
-                top: `${i * ROW_HEIGHT + ROW_HEIGHT / 2}px`,
-                borderTop: '1px dashed rgb(203 213 225 / 0.7)', // slate-300 70%
-              }}
-            />
-          </React.Fragment>
-        ))}
 
         {/* Blocks */}
         {blocks.map((b, i) => {
