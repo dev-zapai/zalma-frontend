@@ -104,24 +104,35 @@ export default function AvailabilityPage() {
     const isOff = day.is_off;
     return (
       <div
-        className={`relative border-l border-slate-100 ${isOff ? 'bg-slate-50/30 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50/40'} transition-colors`}
-        style={{ height: `${(HOUR_END - HOUR_START) * ROW_HEIGHT}px` }}
+        className={`relative ${isOff ? 'bg-slate-50/30 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50/40'} transition-colors`}
+        style={{
+          height: `${(HOUR_END - HOUR_START) * ROW_HEIGHT}px`,
+          borderLeft: '1px solid rgb(203 213 225)', // slate-300 — visible column separator
+        }}
         onClick={() => {
           if (isOff) return;
           navigate(`/dashboard/appointments/new?date=${day.date}&staff_id=${staff.id}`);
         }}
         title={isOff ? 'Staff is unavailable' : 'Click to book on this day'}
       >
-        {/* Grid lines — solid at every hour, dashed at every :30 */}
+        {/* Grid lines — solid at every hour, dashed at every :30.
+            Use inline styles (not Tailwind classes) so the borders render
+            even if any utility class is purged or overridden. */}
         {HOURS.map((h, i) => (
           <React.Fragment key={h}>
             <div
-              className="absolute left-0 right-0 border-t border-slate-200"
-              style={{ top: `${i * ROW_HEIGHT}px` }}
+              className="absolute left-0 right-0 pointer-events-none"
+              style={{
+                top: `${i * ROW_HEIGHT}px`,
+                borderTop: '1px solid rgb(203 213 225)', // slate-300
+              }}
             />
             <div
-              className="absolute left-0 right-0 border-t border-dashed border-slate-100"
-              style={{ top: `${i * ROW_HEIGHT + ROW_HEIGHT / 2}px` }}
+              className="absolute left-0 right-0 pointer-events-none"
+              style={{
+                top: `${i * ROW_HEIGHT + ROW_HEIGHT / 2}px`,
+                borderTop: '1px dashed rgb(203 213 225 / 0.7)', // slate-300 70%
+              }}
             />
           </React.Fragment>
         ))}
