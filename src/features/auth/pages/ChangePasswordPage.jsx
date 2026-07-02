@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -8,47 +8,25 @@ import { Label } from '@/shared/components/ui/label';
 import { KeyRound, ArrowLeft, AlertCircle, CheckCircle } from 'lucide-react';
 import ZalmaLogo from '@/shared/components/ZalmaLogo';
 
-// Two flows land on this page:
-//   1. Reset flow — Supabase recovery email lands here with the recovery
-//      access_token + refresh_token in the URL hash. Backend `/auth/reset-password`
-//      consumes those tokens and sets a new password + session cookies.
-//   2. Temp-password flow — admin created a staff member with a temporary
-//      password and `must_change_password` flag on the profile. Logged-in user
-//      lands here via App.jsx redirect; we call `/members/change-password`
-//      (separate endpoint, server-side rotates Supabase password).
+// Temp-password flow — a logged-in user (e.g. a member created with a
+// temporary password) sets a new one. Calls `/members/change-password`
+// (backend rotates the Cognito password via admin_set_user_password).
+//
+// The forgot/reset-by-email flow now lives entirely on the LoginPage
+// (Cognito emails a code, not a recovery link), so this page no longer
+// handles URL-hash recovery tokens.
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
-  const { profile, fetchProfile, resetPassword } = useAuth();
+  const { profile, fetchProfile } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
-  const [linkError, setLinkError] = useState('');
-  const [recoveryTokens, setRecoveryTokens] = useState(null); // { access_token, refresh_token }
+  const [linkError] = useState('');
 
-  // Read recovery tokens from URL hash (Supabase recovery links use a fragment)
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (!hash) return;
-    const params = new URLSearchParams(hash.substring(1));
-    const errorDesc = params.get('error_description');
-    if (errorDesc) {
-      setLinkError(errorDesc.replace(/\+/g, ' '));
-      return;
-    }
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    const type = params.get('type');
-    if (accessToken && refreshToken && type === 'recovery') {
-      setRecoveryTokens({ access_token: accessToken, refresh_token: refreshToken });
-      // Clean the URL so tokens don't sit in browser history
-      window.history.replaceState(null, '', window.location.pathname);
-    }
-  }, []);
-
-  const isTempPassword = !recoveryTokens && profile?.must_change_password;
-  const isResetFlow = !!recoveryTokens;
+  const isTempPassword = !!profile;  // a logged-in user changing their password
+  const isResetFlow = false;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -64,26 +42,13 @@ export default function ChangePasswordPage() {
     setSubmitting(true);
 
     try {
-      if (isTempPassword) {
-        // Staff temp password flow via backend
-        await api.post('/members/change-password', { new_password: password });
-        await fetchProfile();
-        navigate('/dashboard');
-        return;
+      if (!profile) {
+        throw new Error('Please sign in first, or use "Forgot password" on the sign-in page.');
       }
-
-      if (isResetFlow) {
-        const { error: err } = await resetPassword(
-          recoveryTokens.access_token,
-          recoveryTokens.refresh_token,
-          password,
-        );
-        if (err) throw new Error(err.message);
-        setDone(true);
-        return;
-      }
-
-      throw new Error('No active password reset session. Open the link from your email.');
+      await api.post('/members/change-password', { new_password: password });
+      await fetchProfile();
+      navigate('/dashboard');
+      return;
     } catch (err) {
       setError(err.message || err.response?.data?.detail || 'Failed to change password');
     }

@@ -69,7 +69,7 @@ export default function ForgotPasswordPage() {
                 Check your email
               </h1>
               <p className="text-gray-500 text-sm leading-relaxed">
-                We've sent a password reset link to <strong className="text-gray-700">{email}</strong>. Click the link in the email to set a new password.
+                We've emailed a 6-digit code to <strong className="text-gray-700">{email}</strong>. Go back to the sign-in page and click "Forgot password" to enter it.
               </p>
               <p className="text-gray-400 text-xs mt-4">
                 Didn't receive it? Check your spam folder or{' '}
@@ -89,7 +89,7 @@ export default function ForgotPasswordPage() {
                   Forgot password?
                 </h1>
                 <p className="text-gray-500 text-sm mt-2">
-                  Enter the email associated with your account and we'll send a reset link.
+                  Enter the email associated with your account and we'll email a 6-digit reset code.
                 </p>
               </div>
 
@@ -117,7 +117,7 @@ export default function ForgotPasswordPage() {
                   disabled={loading}
                   className="w-full rounded-lg h-11 bg-gray-900 text-white hover:bg-gray-800 text-sm font-semibold"
                 >
-                  {loading ? 'Sending...' : 'Send Reset Link'}
+                  {loading ? 'Sending...' : 'Send Reset Code'}
                 </Button>
               </form>
 

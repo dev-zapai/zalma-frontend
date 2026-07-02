@@ -8,6 +8,7 @@ import { Label } from '@/shared/components/ui/label';
 import { ArrowLeft, Upload, Check, Mail, ShieldCheck } from 'lucide-react';
 import { THEME_PRESETS } from '@/shared/lib/theme';
 import ZalmaLogo from '@/shared/components/ZalmaLogo';
+import TimezoneSelect from '@/shared/components/TimezoneSelect';
 
 
 export default function RegisterPage() {
@@ -108,7 +109,7 @@ export default function RegisterPage() {
     if (token.length !== 6) { setError('Please enter the 6-digit code'); return; }
     setError('');
     setLoading(true);
-    const { error: err } = await verifyOtp(email, token);
+    const { error: err } = await verifyOtp(email, token, password);
     setLoading(false);
     if (err) {
       setError(err.message || 'Invalid code. Please try again.');
@@ -390,7 +391,15 @@ export default function RegisterPage() {
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-700">Timezone</Label>
-                  <Input value={salonForm.timezone} onChange={e => updateSalon('timezone', e.target.value)} placeholder="Australia/Sydney" className="mt-1.5 h-11 rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400/20" />
+                  <div className="mt-1.5">
+                    <TimezoneSelect
+                      value={salonForm.timezone}
+                      onChange={val => updateSalon('timezone', val)}
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Detected from your browser. All appointment times will use this timezone (DST handled automatically).
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4 items-start">

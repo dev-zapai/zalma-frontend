@@ -9,7 +9,8 @@ import ZalmaLogo from '@/shared/components/ZalmaLogo';
 
 
 export default function LoginPage() {
-  // Step 1 = email, Step 2 = password, Step 3 = forgot-password, Step 4 = reset-sent
+  // Step 1 = email, Step 2 = password, Step 3 = forgot (enter email),
+  // Step 4 = reset (enter emailed code + new password)
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,7 +18,11 @@ export default function LoginPage() {
   const [noProfile, setNoProfile] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
-  const { signIn, forgotPassword } = useAuth();
+  // Reset flow (step 4)
+  const [resetCode, setResetCode] = useState('');
+  const [resetPwd, setResetPwd] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const { signIn, forgotPassword, resetPassword } = useAuth();
   const navigate = useNavigate();
 
   const handleEmailNext = (e) => {
@@ -56,6 +61,22 @@ export default function LoginPage() {
       setError(err.message || 'Failed to send reset email');
     } else {
       setStep(4);
+    }
+  };
+
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (resetPwd !== resetConfirm) { setError('Passwords do not match'); return; }
+    if (resetPwd.length < 6) { setError('Password must be at least 6 characters'); return; }
+    setLoading(true);
+    const { error: err } = await resetPassword(email, resetCode.trim(), resetPwd);
+    setLoading(false);
+    if (err) {
+      setError(err.message || 'Could not reset password');
+    } else {
+      // Backend auto-logged us in (cookies set). Go to dashboard.
+      navigate('/dashboard');
     }
   };
 
@@ -176,7 +197,7 @@ export default function LoginPage() {
                   </div>
                 )}
 
-                {showForgot && !noProfile && (
+                {!noProfile && (
                   <button
                     type="button"
                     onClick={() => { setStep(3); setError(''); }}
@@ -208,7 +229,7 @@ export default function LoginPage() {
                 <h1 className="text-3xl font-bold text-gray-900 tracking-tight" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
                   Reset password
                 </h1>
-                <p className="text-gray-500 text-sm mt-2">We'll send a reset link to your email</p>
+                <p className="text-gray-500 text-sm mt-2">We'll email you a 6-digit code to reset your password</p>
               </div>
               <form onSubmit={handleForgotSubmit} className="space-y-5">
                 <div>
@@ -226,7 +247,7 @@ export default function LoginPage() {
                 </div>
                 {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{error}</p>}
                 <Button type="submit" disabled={loading} className="w-full rounded-lg h-11 bg-gray-900 text-white hover:bg-gray-800 text-sm font-semibold">
-                  {loading ? 'Sending...' : 'Send Reset Link'}
+                  {loading ? 'Sending...' : 'Send Reset Code'}
                 </Button>
               </form>
               <div className="mt-6 text-center">
@@ -239,22 +260,43 @@ export default function LoginPage() {
 
           {/* ── Step 4: Reset link sent ── */}
           {step === 4 && (
-            <div className="text-center py-4">
-              <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="h-7 w-7 text-green-500" />
+            <div>
+              <div className="mb-8">
+                <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mb-5">
+                  <Mail className="h-6 w-6 text-indigo-400" />
+                </div>
+                <h1 className="text-3xl font-bold text-gray-900 tracking-tight" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+                  Enter reset code
+                </h1>
+                <p className="text-gray-500 text-sm mt-2">
+                  We emailed a code to <strong className="text-gray-700">{email}</strong>. Enter it below with your new password.
+                </p>
               </div>
-              <h1 className="text-2xl font-bold text-gray-900 tracking-tight mb-2" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-                Check your email
-              </h1>
-              <p className="text-gray-500 text-sm leading-relaxed">
-                We've sent a password reset link to <strong className="text-gray-700">{email}</strong>.
-                Click the link in the email to set a new password.
+              <form onSubmit={handleResetSubmit} className="space-y-5">
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Reset code</Label>
+                  <Input value={resetCode} onChange={e => setResetCode(e.target.value)} placeholder="6-digit code from email" required autoFocus
+                    className="mt-1.5 h-11 rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400/20" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">New password</Label>
+                  <Input type="password" value={resetPwd} onChange={e => setResetPwd(e.target.value)} placeholder="Min 6 characters" required minLength={6}
+                    className="mt-1.5 h-11 rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400/20" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">Confirm password</Label>
+                  <Input type="password" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} placeholder="Re-enter password" required
+                    className="mt-1.5 h-11 rounded-lg border-gray-200 focus:border-indigo-400 focus:ring-indigo-400/20" />
+                </div>
+                {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{error}</p>}
+                <Button type="submit" disabled={loading} className="w-full rounded-lg h-11 bg-gray-900 text-white hover:bg-gray-800 text-sm font-semibold">
+                  {loading ? 'Resetting...' : 'Reset Password & Sign In'}
+                </Button>
+              </form>
+              <p className="text-gray-400 text-xs mt-4 text-center">
+                Didn't get a code? <button onClick={() => { setStep(3); setError(''); }} className="text-indigo-500 hover:underline font-medium">try again</button>
               </p>
-              <p className="text-gray-400 text-xs mt-4">
-                Didn't receive it? Check spam or{' '}
-                <button onClick={() => setStep(3)} className="text-indigo-500 hover:underline font-medium">try again</button>.
-              </p>
-              <button onClick={() => { setStep(1); setPassword(''); setError(''); setShowForgot(false); }} className="inline-flex items-center gap-1.5 mt-8 text-sm text-gray-500 hover:text-gray-700">
+              <button onClick={() => { setStep(1); setPassword(''); setError(''); setShowForgot(false); setResetCode(''); setResetPwd(''); setResetConfirm(''); }} className="inline-flex items-center gap-1.5 mt-6 text-sm text-gray-500 hover:text-gray-700 w-full justify-center">
                 <ArrowLeft className="h-3.5 w-3.5" /> Back to sign in
               </button>
             </div>

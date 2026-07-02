@@ -63,9 +63,11 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const verifyOtp = useCallback(async (email, token) => {
+  const verifyOtp = useCallback(async (email, token, password) => {
+    // password is required so the backend can auto-login after Cognito's
+    // ConfirmSignUp (which doesn't itself return a session).
     try {
-      await api.post('/auth/verify-otp', { email, token });
+      await api.post('/auth/verify-otp', { email, token, password });
       return { error: null };
     } catch (err) {
       return { error: { message: err.response?.data?.detail || 'Invalid or expired code' } };
@@ -121,15 +123,17 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const resetPassword = useCallback(async (accessToken, refreshToken, newPassword) => {
+  const resetPassword = useCallback(async (email, code, newPassword) => {
+    // Cognito reset: email + emailed code + new password. The backend
+    // auto-logins on success (sets cookies), so we refresh the profile.
     try {
       await api.post('/auth/reset-password', {
-        access_token: accessToken,
-        refresh_token: refreshToken,
+        email,
+        code,
         new_password: newPassword,
       });
-      const { error: profileError } = await fetchProfile();
-      return { error: profileError ? null : null };
+      await fetchProfile();
+      return { error: null };
     } catch (err) {
       return { error: { message: err.response?.data?.detail || 'Could not reset password' } };
     }

@@ -95,7 +95,6 @@ function CardForm({ onSuccess, buttonText = 'Save Card', fullWidth = false }) {
       )}
       <p className="text-xs text-slate-400">
         Your card is securely processed by Stripe. We never see or store your full card number.
-        Test card: 4242 4242 4242 4242
       </p>
       <Button
         type="submit"
