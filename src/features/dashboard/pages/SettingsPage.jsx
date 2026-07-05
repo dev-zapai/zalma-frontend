@@ -194,9 +194,23 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 </div>
-                {/* GST - inside Business Details */}
+                {/* ABN — always visible + required. Printed on every receipt/payslip
+                    for AU tax compliance, regardless of whether the salon is GST
+                    registered. */}
                 <div className="border-t border-slate-100 pt-4 mt-2 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div>
+                    <Label>ABN <span className="text-red-500">*</span></Label>
+                    <Input
+                      value={receiptConfig.abn || ''}
+                      onChange={e => setReceiptConfig(c => ({ ...c, abn: e.target.value }))}
+                      placeholder="51 824 753 556"
+                      className="mt-1.5"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Australian Business Number — required for tax-compliant receipts and payslips.</p>
+                  </div>
+
+                  {/* GST toggle — controls only the tax rate, ABN stands alone */}
+                  <div className="flex items-center justify-between pt-2">
                     <div>
                       <Label className="flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5" /> GST Registered</Label>
                       <p className="text-xs text-slate-400 mt-0.5">Auto-fills tax rate on new receipts when enabled</p>
@@ -204,28 +218,16 @@ export default function SettingsPage() {
                     <Switch checked={gstRegistered} onCheckedChange={setGstRegistered} />
                   </div>
                   {gstRegistered && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label>GST Number (ABN)</Label>
-                        <Input
-                          value={receiptConfig.abn || ''}
-                          onChange={e => setReceiptConfig(c => ({ ...c, abn: e.target.value }))}
-                          placeholder="51 824 753 556"
-                          className="mt-1.5"
-                        />
-                        <p className="text-xs text-slate-400 mt-1">Printed on receipts for tax compliance</p>
-                      </div>
-                      <div>
-                        <Label>GST Rate (%)</Label>
-                        <Input
-                          type="number" step="0.1" min="0" max="100"
-                          value={gstRate}
-                          onChange={e => setGstRate(parseFloat(e.target.value) || 0)}
-                          placeholder="10"
-                          className="mt-1.5"
-                        />
-                        <p className="text-xs text-slate-400 mt-1">Standard Australian GST is 10%</p>
-                      </div>
+                    <div>
+                      <Label>GST Rate (%)</Label>
+                      <Input
+                        type="number" step="0.1" min="0" max="100"
+                        value={gstRate}
+                        onChange={e => setGstRate(parseFloat(e.target.value) || 0)}
+                        placeholder="10"
+                        className="mt-1.5"
+                      />
+                      <p className="text-xs text-slate-400 mt-1">Standard Australian GST is 10%</p>
                     </div>
                   )}
                 </div>
@@ -233,11 +235,17 @@ export default function SettingsPage() {
                 <Button
                   data-testid="settings-save-btn"
                   onClick={async () => {
+                    // Enforce ABN required — tax compliance is not optional
+                    const abn = (receiptConfig.abn || '').trim();
+                    if (!abn) {
+                      toast.error('ABN is required. Enter your Australian Business Number to continue.');
+                      return;
+                    }
                     setSaving(true);
                     try {
                       const settings = { ...(tenant?.settings || {}), currency, gst_registered: gstRegistered, gst_rate: gstRate };
                       // Persist ABN + tax rate into receipt_config so they appear on receipts
-                      settings.receipt_config = { ...(settings.receipt_config || {}), abn: receiptConfig.abn || '' };
+                      settings.receipt_config = { ...(settings.receipt_config || {}), abn };
                       if (gstRegistered && gstRate > 0) {
                         settings.receipt_config.tax_rate = gstRate;
                       }

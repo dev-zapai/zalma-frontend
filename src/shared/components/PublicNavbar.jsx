@@ -5,11 +5,7 @@ import { Menu, X } from 'lucide-react';
 
 const LOGO_SRC = `${process.env.PUBLIC_URL || ''}/zalma_logo.png`;
 
-const NAV_ITEMS = [
-  { label: 'Features', href: '/#features', isInternal: true },
-  { label: 'Pricing', href: '/#pricing', isInternal: true },
-  { label: 'Testimonials', href: '/#testimonials', isInternal: true },
-];
+const NAV_ITEMS = [];
 
 export default function PublicNavbar() {
   const [open, setOpen] = useState(false);

@@ -20,10 +20,6 @@ function ContactHero() {
       </div>
       <div className="relative w-full max-w-[1440px] mx-auto px-4 md:px-8 py-20 md:py-24">
         <div className="max-w-2xl">
-          <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-6" style={{ background: 'rgba(120,120,255,0.06)', border: '1px solid rgba(120,120,255,0.12)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-            <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400">Contact Us</span>
-          </div>
           <h1 className="text-[3rem] md:text-[4rem] font-black tracking-[-0.03em] leading-[0.95] mb-5 text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
             Book a demo or<br />
             <span className="text-indigo-400">get in touch.</span>

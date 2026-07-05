@@ -4,7 +4,7 @@ import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import {
-  ArrowRight, Scissors, Sparkles,
+  ArrowRight, ArrowUpRight, Scissors, Sparkles,
   Check, Calendar, Users, BarChart3, Shield, Star,
   MessageSquare, ChevronRight, ClipboardList, TrendingUp,
   Phone, PawPrint, Heart, Clock, Play
@@ -28,12 +28,7 @@ function HeroSection() {
 
       <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 py-20 md:py-28 relative z-10">
         <div className="max-w-2xl">
-          <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-8" style={{ background: 'rgba(120,120,255,0.06)', border: '1px solid rgba(120,120,255,0.12)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-            <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400">Protocol by Zap AI</span>
-          </div>
-
-          <h1 className="text-[3.5rem] md:text-[4.5rem] lg:text-[5.5rem] font-black tracking-[-0.03em] leading-[0.92] mb-8 text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+          <h1 className="text-[3.5rem] md:text-[4.5rem] lg:text-[5.5rem] font-black tracking-[-0.03em] leading-[0.92] mt-14 mb-8 text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
             Your Grooming<br />
             Salon,{' '}
             <span className="text-indigo-400">Beautifully</span><br />
@@ -41,7 +36,7 @@ function HeroSection() {
           </h1>
 
           <p className="text-lg md:text-xl leading-relaxed max-w-lg mb-10 text-gray-400 font-light">
-            From booking to grooming notes, manage your pet salon with ease. Built for groomers who want to focus on pets, not paperwork.
+            Built for groomers who want to focus on pets, not paperwork.
           </p>
 
           <div className="flex items-center gap-5 flex-wrap">
@@ -107,20 +102,19 @@ function AIFeaturesSection() {
 
   return (
     <section>
-      <div className="text-center py-20 bg-white">
+      <div className="py-20 bg-white">
         <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8">
-          <span className="inline-block text-[12px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">Powerful Features</span>
-          <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 mb-4" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+          <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 mb-3 whitespace-nowrap">
             Everything Your Salon Needs
           </h2>
-          <p className="text-base md:text-lg text-gray-400 max-w-xl mx-auto font-light">
+          <p className="text-base md:text-lg text-gray-500 font-light whitespace-nowrap">
             Three pillars that power every successful grooming business on Zalma.
           </p>
         </div>
       </div>
 
       {features.map((f, i) => (
-        <div key={i} className="relative min-h-[50vh] flex items-center overflow-hidden">
+        <div key={i} className="relative h-[440px] md:h-[500px] flex items-center overflow-hidden">
           {/* Full background image */}
           <div className="absolute inset-0">
             <img src={f.image} alt={f.imageAlt} className="w-full h-full object-cover" />
@@ -131,12 +125,9 @@ function AIFeaturesSection() {
             }} />
           </div>
 
-          <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 py-20 relative z-10">
+          <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 relative z-10">
             <div className={`max-w-lg ${i % 2 === 1 ? 'ml-auto' : ''}`}>
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-6 bg-indigo-50">
-                <f.icon className="h-6 w-6 text-indigo-400" />
-              </div>
-              <h3 className="text-2xl md:text-4xl font-bold text-gray-900 mb-4" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+              <h3 className="text-3xl md:text-5xl font-bold text-gray-900 mb-5 tracking-tight leading-[1.05]">
                 {f.title}
               </h3>
               <p className="text-base md:text-lg leading-relaxed text-gray-500 font-light">
@@ -153,48 +144,67 @@ function AIFeaturesSection() {
 /* ─────────────────── FEATURES GRID ─────────────────── */
 function FeaturesSection() {
   const features = [
-    { icon: Calendar, title: 'Smart Scheduling', desc: 'Staff-based calendars with drag-and-drop management. See who\'s available at a glance.' },
-    { icon: Users, title: 'Client Management', desc: 'Complete client profiles with pet info, contact details, appointment history, and preferences.' },
-    { icon: PawPrint, title: 'Pet Profiles', desc: 'Track breed, weight, coat type, special notes, and complete grooming history for every pet.' },
-    { icon: ClipboardList, title: 'Grooming Notes', desc: 'Record coat condition, services performed, groomer observations, and next recommended visit.' },
-    { icon: BarChart3, title: 'Business Analytics', desc: 'Revenue tracking, popular services, staff performance, and client retention metrics.' },
-    { icon: Shield, title: 'Team Management', desc: 'Admin and staff roles with appropriate permissions. Invite team members via email.' },
+    { title: 'Smart Scheduling',   desc: "Staff-based calendars with drag-and-drop management. See who's available at a glance.", Icon: Calendar },
+    { title: 'Client Management',  desc: 'Complete client profiles with pet info, contact details, appointment history, and preferences.', Icon: Users },
+    { title: 'Pet Profiles',       desc: 'Track breed, weight, coat type, special notes, and complete grooming history for every pet.', Icon: PawPrint },
+    { title: 'Grooming Notes',     desc: 'Record coat condition, services performed, groomer observations, and next recommended visit.', Icon: ClipboardList },
+    { title: 'Business Analytics', desc: 'Revenue tracking, popular services, staff performance, and client retention metrics.', Icon: BarChart3 },
+    { title: 'Team Management',    desc: 'Admin and staff roles with appropriate permissions. Invite team members via email.', Icon: Shield },
   ];
 
   return (
     <section id="features" className="py-28 bg-white">
-      <div className="w-full max-w-[1200px] mx-auto px-4 md:px-8">
-        <div className="grid md:grid-cols-12 gap-10 mb-16">
-          <div className="md:col-span-5">
-            <span className="inline-block text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">Features</span>
-            <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 leading-[1.1]" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-              Built for pet groomers.
-            </h2>
-          </div>
-          <div className="md:col-span-7 flex md:items-end">
-            <p className="text-base md:text-lg text-gray-500 leading-relaxed font-light">
-              Every feature designed to make your grooming salon run smoothly, from the first booking to the final brushstroke.
-            </p>
-          </div>
-        </div>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-12">
+      <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8">
+        <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 whitespace-nowrap mb-16">
+          Built for pet groomers
+        </h2>
+
+        {/* Engineered 3x2 lattice of WHITE tiles with shared hairline borders
+            (2 rows on desktop — the requested "2 row" structure). Borrows the
+            mono two-digit index + indigo-400 accent from the pricing /
+            testimonial sections below for page-family continuity, but stays
+            white and airy — NO grey fill, NO clip-path fold, NO photography —
+            so it never reads as "same". Descriptions stay visible for touch;
+            hover adds an indigo accent rail, an indigo icon-square fill, a
+            content indent-slide, and the ArrowUpRight nudge. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 border-t border-l border-gray-200">
           {features.map((f, i) => (
-            <div key={i} className="group relative">
-              <div className="flex items-center gap-3 mb-5">
-                <span className="text-[12px] font-black tracking-[0.2em] text-indigo-400" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <span className="h-px flex-1 bg-gray-200" />
-                <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                  <f.icon className="h-4 w-4 text-indigo-400" />
+            <div
+              key={i}
+              className="group relative overflow-hidden border-b border-r border-gray-200 bg-white transition-colors duration-300 hover:bg-[#faf7f0]"
+            >
+              {/* Gold accent rail — grows from the top on hover (matches the
+                  warm highlight used on the testimonials cards) */}
+              <span className="pointer-events-none absolute left-0 top-0 h-full w-[3px] origin-top scale-y-0 bg-[#c9a96e] transition-transform duration-300 ease-out group-hover:scale-y-100" />
+
+              {/* Content indents right as the rail appears */}
+              <div className="relative flex min-h-[264px] flex-col p-8 lg:p-10 transition-[padding] duration-300 ease-out group-hover:pl-11 lg:group-hover:pl-[3.25rem]">
+                {/* Top row: mono chapter index + gold-fill icon square */}
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[13px] font-bold tracking-[0.08em] text-gray-300 transition-colors duration-300 group-hover:text-[#c9a96e]">
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f7f1e6] text-[#c9a96e] transition-colors duration-300 group-hover:bg-[#c9a96e] group-hover:text-white">
+                    <f.Icon className="h-5 w-5" strokeWidth={1.75} />
+                  </span>
                 </div>
+
+                {/* Title — mono uppercase, same typographic voice as the
+                    testimonial brand names for page-family consistency */}
+                <div className="mt-8">
+                  <h3 className="text-[15px] md:text-base font-mono font-bold tracking-[0.06em] uppercase text-gray-800">
+                    {f.title}
+                  </h3>
+                </div>
+
+                {/* Description — always visible (touch-safe) */}
+                <p className="mt-3 max-w-sm text-[14px] leading-[1.6] text-gray-500">
+                  {f.desc}
+                </p>
+
+                {/* Quiet gold baseline that draws in on hover */}
+                <span className="pointer-events-none absolute bottom-0 left-0 h-[2px] w-full origin-left scale-x-0 bg-[#c9a96e] transition-transform duration-300 ease-out group-hover:scale-x-100" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2.5" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-                {f.title}
-              </h3>
-              <p className="text-base text-gray-500 leading-relaxed font-light">
-                {f.desc}
-              </p>
             </div>
           ))}
         </div>
@@ -267,62 +277,99 @@ function PricingSection() {
     },
   ];
 
+  // Same clip-path fold as testimonials — visual family across the page.
+  const clipCorner = "polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%)";
+
   return (
     <section id="pricing" className="py-28 bg-white">
       <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8">
-        <div className="text-center mb-16">
-          <span className="inline-block text-[12px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">Pricing</span>
-          <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-            Pay per booking, not per month
-          </h2>
-          <p className="mt-4 text-base md:text-lg text-gray-400 max-w-2xl mx-auto font-light">
-            No lock-in contracts. Upgrade or downgrade anytime. You only pay when you book.
-          </p>
-        </div>
-        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {plans.map((p, i) => (
-            <Card key={i} className={`rounded-2xl border-0 ${p.popular ? 'scale-[1.03] shadow-xl' : 'shadow-sm'}`}
-              style={{
-                border: p.popular ? '2px solid rgba(129,129,255,0.3)' : '1px solid rgba(0,0,0,0.04)',
-                background: 'white',
-              }}>
-              <CardContent className="p-8 flex flex-col h-full">
-                {p.popular && (
-                  <span className="inline-block text-[11px] font-bold tracking-wider uppercase text-white bg-indigo-400 rounded-full px-3 py-1 mb-4 self-start">Most Popular</span>
-                )}
-                <h3 className="text-xl font-bold text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>{p.name}</h3>
-                <p className="text-sm mt-1 text-gray-400">{p.description}</p>
-                <div className="mt-6 mb-1">
-                  <span className="text-4xl font-bold text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>{p.price}</span>
-                  <span className="ml-1 text-gray-400">{p.period}</span>
+        <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 mb-3 whitespace-nowrap">
+          Pay per booking, not per month
+        </h2>
+        <p className="text-base md:text-lg text-gray-500 font-light mb-16 whitespace-nowrap">
+          No lock-in contracts. Upgrade or downgrade anytime. You only pay when you book.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          {plans.map((p, i) => {
+            // "Recommended" plan gets a subtle darker grey — same shape as
+            // the other cards, no scale/shadow gimmicks. Lets the price and
+            // feature list speak for themselves. Same trick Stripe uses.
+            const bg = p.popular ? '#e8e8ec' : '#f2f2f2';
+
+            return (
+              <div
+                key={i}
+                className="group relative p-7 md:p-8 min-h-[620px] flex flex-col transition-all duration-300 hover:-translate-y-1"
+                style={{ background: bg, clipPath: clipCorner }}
+              >
+                {/* Indigo accent rail — grows from the top on hover (same
+                    motion as the features lattice, ties the page together) */}
+                <span className="pointer-events-none absolute left-0 top-0 h-full w-[3px] origin-top scale-y-0 bg-indigo-400 transition-transform duration-300 ease-out group-hover:scale-y-100" />
+
+                {/* Header row — plan name in mono uppercase (matches
+                    testimonial brand-name typography) */}
+                <div className="flex items-center justify-between mb-6">
+                  <span className="text-[13px] font-mono font-bold tracking-[0.08em] text-gray-800">
+                    {p.name.toUpperCase()}
+                  </span>
+                  {p.popular && (
+                    <span className="text-[10px] font-mono font-bold tracking-[0.15em] text-indigo-500 uppercase">
+                      Recommended
+                    </span>
+                  )}
                 </div>
-                {p.minimum && (
-                  <p className="text-xs text-gray-400 mb-3">{p.minimum}</p>
-                )}
-                {p.included && (
-                  <p className="text-xs text-emerald-600 font-medium mb-4">{p.included}</p>
-                )}
-                {!p.included && <div className="mb-4" />}
-                <Button className="w-full rounded-full h-11 text-sm font-medium" asChild
-                    style={p.popular
-                      ? { background: '#818cf8', color: '#fff' }
-                      : { background: '#f4f4ff', color: '#818cf8' }
-                    }>
-                    <Link to={`/register?plan=${p.key}`}>Get Started</Link>
+
+                {/* Description */}
+                <p className="text-[13px] leading-relaxed text-gray-500 mb-8 min-h-[40px]">
+                  {p.description}
+                </p>
+
+                {/* Price */}
+                <div className="mb-1 flex items-baseline gap-1">
+                  <span className="text-4xl md:text-5xl font-bold text-gray-900 tracking-tight">
+                    {p.price}
+                  </span>
+                  <span className="text-sm text-gray-500">{p.period}</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mb-2">{p.minimum || ' '}</p>
+
+                {/* Included allowances (SMS/emails/AI mins) */}
+                <p className="text-[11px] font-medium text-emerald-600 mb-6 min-h-[16px]">
+                  {p.included || ' '}
+                </p>
+
+                {/* CTA — minimal, matches Palantir aesthetic (rectangular,
+                    subtle, no gradient). On card hover it fills indigo to
+                    echo the accent rail. */}
+                <Button
+                  asChild
+                  className={`w-full rounded-none h-11 text-sm font-medium mb-8 shadow-none transition-colors duration-300 ${
+                    p.popular
+                      ? 'bg-gray-900 text-white group-hover:bg-indigo-500'
+                      : 'bg-white text-gray-900 border border-gray-300 group-hover:bg-indigo-500 group-hover:text-white group-hover:border-indigo-500'
+                  }`}
+                >
+                  <Link to={`/register?plan=${p.key}`}>Get Started</Link>
                 </Button>
-                <div className="mt-8 space-y-3 flex-1">
+
+                {/* Feature list — small dot bullets, engineered feel */}
+                <div className="space-y-2.5 flex-1">
                   {p.features.map((f, j) => (
-                    <div key={j} className="flex items-center gap-2.5">
-                      <Check className="h-4 w-4 flex-shrink-0 text-indigo-400" />
-                      <span className="text-sm text-gray-500">{f}</span>
+                    <div key={j} className="flex items-start gap-3">
+                      <span className="w-1 h-1 rounded-full bg-gray-500 mt-2 flex-shrink-0" />
+                      <span className="text-[13px] leading-relaxed text-gray-600">{f}</span>
                     </div>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            );
+          })}
         </div>
-        <p className="text-center text-xs text-gray-400 mt-8">Prices are exclusive of GST. No lock-in contracts. Cancel anytime.</p>
+
+        <p className="text-[11px] font-mono uppercase tracking-[0.1em] text-gray-400 mt-10">
+          Prices exclusive of GST · No lock-in · Cancel anytime
+        </p>
       </div>
     </section>
   );
@@ -332,49 +379,65 @@ function PricingSection() {
 function TestimonialsSection() {
   const testimonials = [
     {
+      brand: "PAWS & CLAWS",
       text: "Zalma transformed how we manage our grooming salon. Booking is a breeze and our clients love the reminders!",
-      name: "Sarah Mitchell",
-      role: "Owner, Paws & Claws Grooming",
-      rating: 5,
     },
     {
+      brand: "HAPPY TAILS",
       text: "The grooming notes feature is a game-changer. We can track every pet's coat condition and preferences across visits.",
-      name: "James Parker",
-      role: "Head Groomer, Happy Tails Salon",
-      rating: 5,
     },
     {
+      brand: "FUR & FABULOUS",
       text: "Finally a system built for groomers, not just clinics. The staff scheduling alone saves us hours every week.",
-      name: "Priya Sharma",
-      role: "Manager, Fur & Fabulous",
-      rating: 5,
+    },
+    {
+      brand: "BARK AVENUE",
+      text: "We deployed Zalma at 3 locations in a week. Revenue tracking finally makes sense across the whole salon group.",
+    },
+    {
+      brand: "WAG HAUS",
+      text: "Our no-show rate dropped 40% after switching to Zalma's automated reminders. Best decision we made this year.",
     },
   ];
 
+  // Palantir-style card: light grey background with a folded top-right
+  // corner (clip-path diagonal cut) that gives the cards a distinct,
+  // engineered feel.
+  const clipCorner = "polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%)";
+
+  // Duplicate the list so the marquee track can loop seamlessly (-50%).
+  const loop = [...testimonials, ...testimonials];
+
   return (
-    <section id="testimonials" className="py-28" style={{ background: '#f8f8ff' }}>
+    <section id="testimonials" className="py-28 bg-white">
+      {/* Everything stays inside the aligned container — the marquee starts
+          at the logo's left edge and scrolls horizontally within it, clipping
+          on the right. Not full-bleed. */}
       <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8">
-        <div className="text-center mb-16">
-          <span className="inline-block text-[12px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">Testimonials</span>
-          <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-            Loved by Groomers
-          </h2>
-        </div>
-        <div className="grid md:grid-cols-3 gap-6">
-          {testimonials.map((t, i) => (
-            <div key={i} className="rounded-2xl bg-white p-8 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex gap-1 mb-4">
-                {[...Array(t.rating)].map((_, j) => (
-                  <Star key={j} className="h-4 w-4 fill-amber-300 text-amber-300" />
-                ))}
+        <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 whitespace-nowrap mb-16">
+          Loved by Groomers
+        </h2>
+
+        <div className="relative overflow-hidden">
+          <div className="marquee-track gap-4 md:gap-5">
+            {loop.map((t, i) => (
+              <div
+                key={i}
+                className="group relative bg-[#f2f2f2] hover:bg-[#f7f1e6] transition-colors duration-300 p-6 md:p-7 w-[280px] md:w-[320px] shrink-0 min-h-[220px] flex flex-col"
+                style={{ clipPath: clipCorner }}
+              >
+                {/* Accent rail — warm gold highlight (distinct from the indigo
+                    used elsewhere), grows from the top on hover */}
+                <span className="pointer-events-none absolute left-0 top-0 h-full w-[3px] origin-top scale-y-0 bg-[#c9a96e] transition-transform duration-300 ease-out group-hover:scale-y-100" />
+                <span className="text-[13px] font-mono font-bold tracking-[0.08em] text-gray-800">
+                  {t.brand}
+                </span>
+                <p className="text-[13px] leading-[1.55] text-gray-500 mt-auto pt-8">
+                  "{t.text}"
+                </p>
               </div>
-              <p className="text-sm leading-relaxed mb-6 text-gray-500">"{t.text}"</p>
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{t.name}</p>
-                <p className="text-xs text-gray-400">{t.role}</p>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -397,7 +460,6 @@ function CTASection() {
 
       <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 py-20 relative z-10">
         <div className="max-w-2xl">
-          <span className="inline-block text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-4">Get Started Today</span>
           <h2 className="text-3xl md:text-[3.2rem] font-bold text-gray-900 mb-5 tracking-tight leading-[1.1]" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
             Ready to streamline your grooming salon?
           </h2>
@@ -425,7 +487,9 @@ function CTASection() {
 /* ─────────────────── PAGE ─────────────────── */
 export default function PetGroomingLandingPage() {
   return (
-    <div className="min-h-screen bg-white">
+    // Home page uses Manrope throughout; the rest of the site keeps its
+    // original Plus Jakarta Sans body font (set globally in index.css).
+    <div className="min-h-screen bg-white" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
       <PublicNavbar />
       <HeroSection />
       <AIFeaturesSection />

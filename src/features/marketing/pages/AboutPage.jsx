@@ -13,10 +13,6 @@ function AboutHero() {
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/40 via-white to-white" />
       <div className="relative w-full max-w-[1440px] mx-auto px-4 md:px-8 pt-20 pb-16 md:pt-28 md:pb-20">
         <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-8" style={{ background: 'rgba(120,120,255,0.06)', border: '1px solid rgba(120,120,255,0.12)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-            <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400">About Zalma</span>
-          </div>
           <h1 className="text-[3rem] md:text-[4rem] lg:text-[5rem] font-black tracking-[-0.03em] leading-[0.92] text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
             Software shaped<br />
             around the way<br />
@@ -41,7 +37,6 @@ function MissionSection() {
       </div>
       <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 py-20 relative z-10">
         <div className="max-w-lg">
-          <span className="inline-block text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">Our Mission</span>
           <h2 className="text-3xl md:text-[2.8rem] font-bold text-gray-900 mb-5 tracking-tight leading-[1.1]" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
             Software that disappears into the background.
           </h2>
@@ -75,7 +70,6 @@ function StorySection() {
       </div>
       <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 py-20 relative z-10">
         <div className="max-w-lg ml-auto">
-          <span className="inline-block text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">The Zalma Story</span>
           <h2 className="text-3xl md:text-[2.8rem] font-bold text-gray-900 mb-5 tracking-tight leading-[1.1]" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
             Built from a familiar conversation.
           </h2>
@@ -119,74 +113,83 @@ function PrinciplesSection() {
       desc: 'Your data is yours. Always exportable, never locked in, never used to train general-purpose AI models. Tenant isolation is not a marketing line; it is enforced at every layer of the stack.',
     },
   ];
+  // Warm craft panels. Beliefs, not steps — no numbering, no implied order.
+  // Each belief is a calm white panel with the icon inline in the headline
+  // row (indigo, no ring/square). Signature is restraint: a hairline top-edge
+  // stays transparent at rest and warms to indigo on hover while the panel
+  // lifts a few pixels. Rounded, softly shadowed, 2x2 rhythm — deliberately
+  // not the bordered hover-lattice used on the home page.
   return (
-    <section className="py-28 bg-white">
-      <div className="w-full max-w-[1100px] mx-auto px-4 md:px-8">
-        <div className="grid md:grid-cols-12 gap-10 mb-16">
-          <div className="md:col-span-5">
-            <span className="inline-block text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-3">Operating Principles</span>
-            <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 leading-[1.1]" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-              How we build.
-            </h2>
-          </div>
-          <div className="md:col-span-7 flex md:items-end">
-            <p className="text-base md:text-lg text-gray-500 leading-relaxed font-light">
-              Four ideas that shape every product decision we make. We hold ourselves to them, and our customers hold us to them.
-            </p>
-          </div>
+    <section className="py-28 bg-[#fafafa]">
+      <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8">
+        <div className="max-w-2xl mb-14 md:mb-16">
+          <h2 className="text-3xl md:text-[2.8rem] font-bold tracking-tight text-gray-900 leading-[1.1]" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+            How we build
+          </h2>
+          <p className="mt-4 text-base md:text-lg text-gray-500 leading-relaxed font-light">
+            Four beliefs that shape every product decision we make.
+          </p>
         </div>
-        <div className="grid md:grid-cols-2 gap-x-12 gap-y-14">
-          {principles.map((p, i) => (
-            <div key={i} className="group relative">
-              <div className="flex items-center gap-4 mb-5">
-                <span className="text-[13px] font-black tracking-[0.2em] text-indigo-400" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <span className="h-px flex-1 bg-gray-200" />
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                  <p.icon className="h-5 w-5 text-indigo-400" />
-                </div>
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
-                {p.title}
-              </h3>
-              <p className="text-base text-gray-500 leading-relaxed font-light">
-                {p.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
-function BuiltByZapAISection() {
-  return (
-    <section className="py-24 bg-white">
-      <div className="w-full max-w-[900px] mx-auto px-4 md:px-8">
-        <div className="grid md:grid-cols-12 gap-10 items-start">
-          <div className="md:col-span-4">
-            <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400">Built by Zap AI</span>
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-gray-900 mt-3" style={{ fontFamily: 'Manrope' }}>
-              A product of an Australian software studio.
-            </h2>
-          </div>
-          <div className="md:col-span-8 space-y-5 text-base md:text-lg text-gray-500 leading-relaxed">
+        <div className="grid md:grid-cols-2 gap-6 lg:gap-7">
+          {principles.map((p, i) => {
+            const Icon = p.icon;
+            return (
+              <div
+                key={i}
+                className="group relative rounded-3xl bg-white p-8 md:p-10 shadow-[0_1px_3px_rgba(17,24,39,0.04),0_12px_28px_-16px_rgba(17,24,39,0.10)] transition-[transform,box-shadow] duration-300 ease-out motion-reduce:transition-none hover:-translate-y-1 hover:shadow-[0_2px_6px_rgba(17,24,39,0.05),0_24px_44px_-20px_rgba(79,70,229,0.22)] motion-reduce:hover:translate-y-0"
+              >
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-8 md:inset-x-10 top-0 h-px rounded-full bg-indigo-400/0 transition-colors duration-300 group-hover:bg-indigo-400/70 motion-reduce:transition-none"
+                />
+                <div className="flex items-center gap-3.5 mb-4">
+                  <Icon className="h-6 w-6 shrink-0 text-indigo-400" strokeWidth={1.75} aria-hidden="true" />
+                  <h3 className="text-xl md:text-[1.6rem] font-bold text-gray-900 tracking-tight leading-tight" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
+                    {p.title}
+                  </h3>
+                </div>
+                <p className="text-[15px] md:text-base leading-relaxed text-gray-500 font-light">
+                  {p.desc}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Provenance as a quote — sits inside this section (not its own box),
+            oversized indigo opening mark + border rail, running edge-to-edge. */}
+        <blockquote className="mt-16 md:mt-20 relative pl-8 md:pl-12 border-l-2 border-indigo-200">
+          <span
+            aria-hidden="true"
+            className="block mb-2 text-indigo-400 leading-[0.5] select-none text-[5rem] md:text-[7rem]"
+            style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}
+          >
+            &ldquo;
+          </span>
+          <div className="space-y-5 text-lg md:text-[1.3rem] leading-[1.5] tracking-[-0.01em] text-gray-500 font-light">
             <p>
-              Zalma is built and operated by Zap AI, an Australian software company specialising in AI-powered automation for service businesses.
+              Zalma is built and operated by{' '}
+              <span className="text-gray-900 font-semibold" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>Zap AI</span>, an Australian software company specialising in AI-powered automation for service businesses.
             </p>
             <p>
-              Customer data stays onshore in Australia. We comply with the Australian Privacy Act and the Spam Act 2003. Pricing is in Australian dollars.
+              Your data stays{' '}
+              <span className="text-indigo-500 font-medium">onshore in Australia</span>, complying with the{' '}
+              <span className="text-indigo-500 font-medium">Australian Privacy Act</span> and the{' '}
+              <span className="text-indigo-500 font-medium">Spam Act 2003</span>. Pricing is in{' '}
+              <span className="text-indigo-500 font-medium">Australian dollars</span>.
             </p>
-            <div className="pt-2">
-              <a href={`${MARKETING_URL}/about`}>
-                <Button className="rounded-full px-6 h-11 text-[13px] font-medium bg-gray-900 text-white hover:bg-gray-800">
-                  About Zap AI <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </a>
-            </div>
           </div>
+        </blockquote>
+
+        <div className="mt-10">
+          <a
+            href={`${MARKETING_URL}/about`}
+            className="group inline-flex items-center gap-1.5 text-[15px] font-medium text-gray-900 underline underline-offset-4 decoration-gray-300 hover:decoration-gray-900 transition-colors"
+          >
+            About Zap AI
+            <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+          </a>
         </div>
       </div>
     </section>
@@ -206,7 +209,6 @@ function CTASection() {
       </div>
       <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 py-20 relative z-10">
         <div className="max-w-2xl">
-          <span className="inline-block text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400 mb-4">Get Started Today</span>
           <h2 className="text-3xl md:text-[3.2rem] font-bold text-gray-900 mb-5 tracking-tight leading-[1.1]" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
             Ready to try Zalma?
           </h2>
@@ -235,7 +237,6 @@ export default function AboutPage() {
       <MissionSection />
       <StorySection />
       <PrinciplesSection />
-      <BuiltByZapAISection />
       <CTASection />
       <Footer />
     </div>

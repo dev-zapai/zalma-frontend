@@ -187,3 +187,24 @@ button, a, input, select, textarea {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ── Infinite horizontal marquee (testimonials) ──
+   The track holds two identical copies of the content laid side by side.
+   Translating it -50% and looping makes the first copy scroll off exactly
+   as the second copy takes its place — seamless, no jump. Pausing on hover
+   lets people read a card. */
+@keyframes marqueeScroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marqueeScroll 40s linear infinite;
+}
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
+}

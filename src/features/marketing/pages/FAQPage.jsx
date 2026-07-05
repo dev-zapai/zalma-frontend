@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent
 } from '@/shared/components/ui/accordion';
-import { HelpCircle } from 'lucide-react';
 import PublicNavbar from '@/shared/components/PublicNavbar';
 import Footer from '@/shared/components/Footer';
 
@@ -153,10 +152,6 @@ function FAQHero() {
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/40 via-white to-white" />
       <div className="relative w-full max-w-[1440px] mx-auto px-4 md:px-8 pt-20 pb-12 md:pt-24 md:pb-16">
         <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-8" style={{ background: 'rgba(120,120,255,0.06)', border: '1px solid rgba(120,120,255,0.12)' }}>
-            <HelpCircle className="h-3.5 w-3.5 text-indigo-400" />
-            <span className="text-[11px] font-bold tracking-[0.15em] uppercase text-indigo-400">Help Center</span>
-          </div>
           <h1 className="text-[3rem] md:text-[4rem] lg:text-[4.75rem] font-black tracking-[-0.03em] leading-[0.95] mb-6 text-gray-900" style={{ fontFamily: 'Manrope, system-ui, sans-serif' }}>
             Frequently Asked<br />
             <span className="text-indigo-400">Questions.</span>

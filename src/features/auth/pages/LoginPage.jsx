@@ -81,7 +81,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div data-testid="login-page" className="min-h-screen flex" style={{ fontFamily: 'Plus Jakarta Sans, system-ui, sans-serif' }}>
+    <div data-testid="login-page" className="min-h-screen flex">
       {/* Left panel */}
       <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden items-center justify-center" style={{ background: 'linear-gradient(135deg, #4338ca 0%, #818cf8 50%, #a5b4fc 100%)' }}>
         <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, #fff 1px, transparent 1px), radial-gradient(circle at 80% 20%, #fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
@@ -97,10 +97,6 @@ export default function LoginPage() {
               ? "Enter your email and we'll send you a link to reset your password. You'll be back in your salon dashboard in no time."
               : 'Scheduling, clients, pets, payments, and analytics all in one place. Join hundreds of grooming salons running on Zalma.'}
           </p>
-          <div className="mt-10 flex items-center gap-3 text-white/50 text-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-white/40" />
-            <span className="tracking-[0.15em] uppercase font-bold">Protocol by Zap AI</span>
-          </div>
         </div>
       </div>
 
