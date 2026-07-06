@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
@@ -1187,7 +1188,7 @@ export default function GroomingAppointmentDetailPage() {
                       {typePhotos.map(photo => (
                         <div key={photo.id} className="relative group aspect-square">
                           <img
-                            src={photo.photo_url}
+                            src={assetUrl(photo.photo_url)}
                             alt={photo.caption || `${type} photo`}
                             className="w-full h-full object-cover rounded-lg border"
                           />

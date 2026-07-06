@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
@@ -96,6 +97,7 @@ export default function MemberDetailPage() {
   const navigate = useNavigate();
   const { profile, fetchProfile } = useAuth();
   const currentIsAdmin = profile?.is_admin || profile?.role === 'admin';
+  const currentIsOwner = !!profile?.is_owner;  // only the owner grants/revokes admin
 
   const [member, setMember] = useState(null);
   const [memberUser, setMemberUser] = useState(null);
@@ -157,7 +159,9 @@ export default function MemberDetailPage() {
   const canUploadDocuments = canManage;         // docs: admin or self
   const canDeleteDocuments = canManage;
   const canEditEmployment = currentIsAdmin;     // pay, type, finance: admin only
-  const canEditRole = currentIsAdmin;           // role title + admin toggle: admin only
+  // Job-title edits are admin-level, but the ADMIN toggle is owner-only.
+  const canEditRole = currentIsAdmin;           // role title: admin
+  const canToggleAdmin = currentIsOwner;        // grant/revoke admin: owner only
   const canEditQualification = canManage;       // qualification: admin or self
 
   // ── Fetch appointments (separate, for KPI range changes) ─────────────
@@ -445,6 +449,22 @@ export default function MemberDetailPage() {
     setSavingRole(false);
   };
 
+  // Self-service: remove myself from the roster. Soft-hides my staff record
+  // (history preserved) — I leave Team Management, availability and bookings.
+  // Since this page only exists while I'm staff, opting out navigates away.
+  const handleRemoveSelfFromStaff = async () => {
+    setSavingRole(true);
+    try {
+      await api.put('/profile/staff-status', { is_staff: false });
+      await fetchProfile();
+      toast.success('Removed from the roster. Your history is preserved. Re-enable it anytime from My Profile.');
+      navigate('/dashboard/staff');
+    } catch {
+      toast.error('Could not update staff status');
+      setSavingRole(false);
+    }
+  };
+
   const handleSaveBank = async () => {
     setSavingBank(true);
     try {
@@ -479,7 +499,7 @@ export default function MemberDetailPage() {
         <div className="flex items-center gap-4 flex-1">
           <div className="relative group">
             {member.photo_url ? (
-              <img src={member.photo_url} alt={member.full_name} className="w-16 h-16 rounded-full object-cover border-2 border-slate-200" />
+              <img src={assetUrl(member.photo_url)} alt={member.full_name} className="w-16 h-16 rounded-full object-cover border-2 border-slate-200" />
             ) : (
               <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white shrink-0" style={{ backgroundColor: member.color || '#6366F1' }}>
                 {member.full_name?.charAt(0)?.toUpperCase()}
@@ -520,6 +540,24 @@ export default function MemberDetailPage() {
               {member.role && <Badge variant="outline" className="rounded-full text-xs">{member.role}</Badge>}
               <Badge className={`rounded-full text-xs ${member.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{member.is_active ? 'Active' : 'Inactive'}</Badge>
             </div>
+            {canManage && member.photo_url && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await api.delete(`/staff/${memberId}/photo`);
+                    setMember(m => ({ ...m, photo_url: null }));
+                    if (memberUser?.id === profile?.id) await fetchProfile();
+                    toast.success('Photo removed');
+                  } catch (err) {
+                    toast.error('Failed to remove photo');
+                  }
+                }}
+                className="text-xs font-medium text-red-600 hover:underline mt-2"
+              >
+                Remove photo
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -759,8 +797,9 @@ export default function MemberDetailPage() {
               )}
             </div>
 
-            {/* Admin toggle - admin only, disabled for owner */}
-            {canEditRole && memberUser && !memberUser.is_owner && (
+            {/* Admin toggle — OWNER ONLY. Non-owner admins can't grant/revoke
+                admin (backend enforces this too). Owner can't be demoted. */}
+            {canToggleAdmin && memberUser && !memberUser.is_owner && (
               <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                 <div>
                   <Label className="text-sm font-medium">Admin Access</Label>
@@ -776,6 +815,19 @@ export default function MemberDetailPage() {
                   <p className="text-xs text-slate-400 mt-0.5">Full admin access. Cannot be revoked.</p>
                 </div>
                 <Shield className="h-4 w-4 text-amber-600" />
+              </div>
+            )}
+
+            {/* Self-service: I can remove MYSELF from the roster. Shown only on
+                my own record. Keeps all history; just hides me from the team
+                list, availability and new bookings. Re-enable from My Profile. */}
+            {isSelf && (
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                <div>
+                  <Label className="text-sm font-medium">Works as staff member</Label>
+                  <p className="text-xs text-slate-400 mt-0.5">Appears in roster, scheduling &amp; bookings. History is kept if turned off.</p>
+                </div>
+                <Switch checked={true} onCheckedChange={handleRemoveSelfFromStaff} disabled={savingRole} />
               </div>
             )}
 

@@ -9,14 +9,17 @@ import {
 
 const COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
-export default function AnalyticsPetsTab({ currency }) {
+export default function AnalyticsPetsTab({ currency, days, customRange }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    api.get('/g/analytics/pets-insights')
+    const params = customRange
+      ? { from_date: customRange.from, to_date: customRange.to }
+      : { days };
+    api.get('/g/analytics/pets-insights', { params })
       .then(r => setData(r.data))
       .catch(e => console.error(e));
-  }, []);
+  }, [days, customRange]);
 
   if (!data) {
     return (
@@ -31,7 +34,7 @@ export default function AnalyticsPetsTab({ currency }) {
         <Card className="rounded-xl border-slate-200/60">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 text-sm text-slate-500">
-              <PawPrint className="h-4 w-4 text-violet-500" /> Total Pets
+              <PawPrint className="h-4 w-4 text-violet-500" /> Pets Seen
             </div>
             <p className="text-3xl font-bold text-slate-900 mt-1">{data.total_pets}</p>
           </CardContent>

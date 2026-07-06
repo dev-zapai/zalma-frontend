@@ -22,15 +22,14 @@ export default function AnalyticsPage() {
   const hasFullAnalytics = tenantPlan === 'growth' || tenantPlan === 'advanced';
   const [overview, setOverview] = useState(null);
   const [trends, setTrends] = useState([]);
-  const [period, setPeriod] = useState('month');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-
-  // Staff utilisation — preset window in days OR explicit custom range.
-  const [utilDays, setUtilDays] = useState(30);
-  const [customRange, setCustomRange] = useState(null);
   const [utilisation, setUtilisation] = useState(null);
   const [currency, setCurrency] = useState('AUD');
+
+  // Single analytics window shared by every tab: a preset rolling window in
+  // days OR an explicit custom range. Lives here (top of page) and is passed
+  // down to each sub-tab so there is exactly one filter for the whole screen.
+  const [days, setDays] = useState(30);
+  const [customRange, setCustomRange] = useState(null);
 
   // Fetch currency once
   useEffect(() => {
@@ -39,47 +38,27 @@ export default function AnalyticsPage() {
       .catch(() => {});
   }, []);
 
-  const selectPreset = (p) => {
-    setPeriod(p);
-    setDateFrom('');
-    setDateTo('');
-  };
-
-  const applyCustomRange = (from, to) => {
-    if (from && to) {
-      setDateFrom(from);
-      setDateTo(to);
-      setPeriod('custom');
-    }
-  };
-
-  // Overview + trends both respect the period / custom range
+  // Overview + trends both respect the shared window
   useEffect(() => {
-    let overviewParams, trendsParams;
-    if (period === 'custom' && dateFrom && dateTo) {
-      overviewParams = { period: 'custom', from_date: dateFrom, to_date: dateTo };
-      trendsParams = { from_date: dateFrom, to_date: dateTo };
-    } else {
-      const days = period === 'week' ? 7 : period === 'year' ? 90 : 30;
-      overviewParams = { period };
-      trendsParams = { days };
-    }
+    const params = customRange
+      ? { from_date: customRange.from, to_date: customRange.to }
+      : { days };
     Promise.all([
-      api.get('/g/analytics/overview', { params: overviewParams }),
-      api.get('/g/analytics/trends', { params: trendsParams }),
+      api.get('/g/analytics/overview', { params }),
+      api.get('/g/analytics/trends', { params }),
     ])
       .then(([o, t]) => { setOverview(o.data); setTrends(t.data); })
       .catch(e => console.error(e));
-  }, [period, dateFrom, dateTo]);
+  }, [days, customRange]);
 
   useEffect(() => {
     const params = customRange
       ? { from_date: customRange.from, to_date: customRange.to }
-      : { days: utilDays };
+      : { days };
     api.get('/g/analytics/staff-utilisation', { params })
       .then(r => setUtilisation(r.data))
       .catch(e => { console.error(e); setUtilisation(null); });
-  }, [utilDays, customRange]);
+  }, [days, customRange]);
 
   return (
     <div data-testid="analytics-page" className="space-y-6 animate-fade-in">
@@ -89,29 +68,56 @@ export default function AnalyticsPage() {
           <p className="text-sm text-slate-500 mt-1">Performance, trends, and revenue insights</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {['week', 'month', 'year'].map(p => (
-            <button
-              key={p}
-              onClick={() => selectPreset(p)}
-              className={`px-4 py-1.5 text-xs font-medium rounded-lg transition-colors ${period === p ? 'bg-primary text-primary-foreground' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Year'}
-            </button>
-          ))}
-          <div className="w-px h-5 bg-slate-200 mx-1" />
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={e => applyCustomRange(e.target.value, dateTo || e.target.value)}
-            className={`h-8 px-2 text-xs rounded-lg border transition-colors ${period === 'custom' ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white'} text-slate-700 focus:outline-none focus:border-primary`}
-          />
-          <span className="text-xs text-slate-400">to</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={e => applyCustomRange(dateFrom || e.target.value, e.target.value)}
-            className={`h-8 px-2 text-xs rounded-lg border transition-colors ${period === 'custom' ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white'} text-slate-700 focus:outline-none focus:border-primary`}
-          />
+          <div className="flex gap-1">
+            {[7, 30, 60, 90, 365].map(d => (
+              <button
+                key={d}
+                onClick={() => { setDays(d); setCustomRange(null); }}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                  !customRange && days === d
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {d === 365 ? '1y' : `${d}d`}
+              </button>
+            ))}
+          </div>
+          {/* Custom date range - overrides the chips when a bound is filled.
+              Either input alone is treated as a single-day window (the server
+              fills in the missing side). */}
+          <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+            <span className="text-[10px] text-slate-400 uppercase tracking-wide">Custom</span>
+            <input
+              type="date"
+              value={customRange?.from || ''}
+              onChange={(e) => {
+                const from = e.target.value;
+                if (!from) { setCustomRange(null); return; }
+                setCustomRange(prev => ({ from, to: prev?.to || from }));
+              }}
+              className={`h-8 px-2 text-xs rounded-lg border transition-colors ${customRange ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white'} text-slate-700 focus:outline-none focus:border-primary`}
+            />
+            <span className="text-xs text-slate-400">{'→'}</span>
+            <input
+              type="date"
+              value={customRange?.to || ''}
+              onChange={(e) => {
+                const to = e.target.value;
+                if (!to) { setCustomRange(null); return; }
+                setCustomRange(prev => ({ from: prev?.from || to, to }));
+              }}
+              className={`h-8 px-2 text-xs rounded-lg border transition-colors ${customRange ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white'} text-slate-700 focus:outline-none focus:border-primary`}
+            />
+            {customRange && (
+              <button
+                onClick={() => setCustomRange(null)}
+                className="text-[10px] text-slate-400 hover:text-slate-600 underline ml-1"
+              >
+                clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -140,7 +146,7 @@ export default function AnalyticsPage() {
               <p className="text-xs text-slate-400 mt-1">
                 Earned revenue (paid receipts){overview?.start_date && overview?.end_date
                   ? ` - ${overview.start_date} to ${overview.end_date}`
-                  : ` - last ${period}`}
+                  : ''}
               </p>
             </CardContent>
           </Card>
@@ -228,22 +234,22 @@ export default function AnalyticsPage() {
 
         {/* ═══════ Tab 2: Revenue (Growth+) ═══════ */}
         {hasFullAnalytics && <TabsContent value="revenue">
-          <AnalyticsRevenueTab currency={currency} />
+          <AnalyticsRevenueTab currency={currency} days={days} customRange={customRange} />
         </TabsContent>}
 
         {/* ═══════ Tab 3: Appointments (Growth+) ═══════ */}
         {hasFullAnalytics && <TabsContent value="appointments">
-          <AnalyticsAppointmentsTab currency={currency} />
+          <AnalyticsAppointmentsTab currency={currency} days={days} customRange={customRange} />
         </TabsContent>}
 
         {/* ═══════ Tab 4: Clients (Growth+) ═══════ */}
         {hasFullAnalytics && <TabsContent value="clients">
-          <AnalyticsClientsTab currency={currency} />
+          <AnalyticsClientsTab currency={currency} days={days} customRange={customRange} />
         </TabsContent>}
 
         {/* ═══════ Tab 5: Pets (Growth+) ═══════ */}
         {hasFullAnalytics && <TabsContent value="pets">
-          <AnalyticsPetsTab currency={currency} />
+          <AnalyticsPetsTab currency={currency} days={days} customRange={customRange} />
         </TabsContent>}
 
         {/* ═══════ Tab 6: Staff (Growth+) ═══════ */}
@@ -254,69 +260,7 @@ export default function AnalyticsPage() {
               Standard salon-industry KPI: utilisation % = booked / available x 100
           */}
           <Card className="rounded-xl border-slate-200/60">
-            <CardHeader className="flex-row items-center justify-between flex-wrap gap-3">
-              <div>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-primary" /> Staff Utilisation
-                </CardTitle>
-                <p className="text-xs text-slate-500 mt-1">
-                  Booked time as a % of working hours (after breaks &amp; leaves). The standard salon KPI for capacity planning.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex gap-1">
-                  {[7, 30, 60, 90, 365].map(d => (
-                    <button
-                      key={d}
-                      onClick={() => { setUtilDays(d); setCustomRange(null); }}
-                      className={`px-3 py-1 text-xs rounded-md ${
-                        !customRange && utilDays === d
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {d === 365 ? '1y' : `${d}d`}
-                    </button>
-                  ))}
-                </div>
-                {/* Custom date range - overrides the chips when both inputs
-                    are filled. Either input alone is treated as a single-day
-                    window (server fills in the missing side). */}
-                <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
-                  <span className="text-[10px] text-slate-400 uppercase tracking-wide">Custom</span>
-                  <input
-                    type="date"
-                    value={customRange?.from || ''}
-                    onChange={(e) => {
-                      const from = e.target.value;
-                      if (!from) { setCustomRange(null); return; }
-                      setCustomRange(prev => ({ from, to: prev?.to || from }));
-                    }}
-                    className="h-7 text-xs px-2 border border-slate-200 rounded-md"
-                  />
-                  <span className="text-xs text-slate-400">{'\u2192'}</span>
-                  <input
-                    type="date"
-                    value={customRange?.to || ''}
-                    onChange={(e) => {
-                      const to = e.target.value;
-                      if (!to) { setCustomRange(null); return; }
-                      setCustomRange(prev => ({ from: prev?.from || to, to }));
-                    }}
-                    className="h-7 text-xs px-2 border border-slate-200 rounded-md"
-                  />
-                  {customRange && (
-                    <button
-                      onClick={() => setCustomRange(null)}
-                      className="text-[10px] text-slate-400 hover:text-slate-600 underline ml-1"
-                    >
-                      clear
-                    </button>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-6 pt-6">
               {!utilisation ? (
                 <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
                   Loading utilisation data...

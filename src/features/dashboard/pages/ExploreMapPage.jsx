@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -471,7 +472,7 @@ export default function ExploreMapPage() {
                     salon.is_current ? 'bg-violet-100' : 'bg-slate-100'
                   }`}>
                     {salon.logo_url ? (
-                      <img src={salon.logo_url} alt="" className="w-10 h-10 rounded-xl object-cover" />
+                      <img src={assetUrl(salon.logo_url)} alt="" className="w-10 h-10 rounded-xl object-cover" />
                     ) : (
                       <Dog className={`h-5 w-5 ${salon.is_current ? 'text-violet-600' : 'text-slate-400'}`} />
                     )}

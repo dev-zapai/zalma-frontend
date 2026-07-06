@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { Card, CardContent, CardHeader } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -28,7 +29,7 @@ function PetAvatar({ pet }) {
   return (
     <div className={`w-9 h-9 rounded-full flex items-center justify-center ${cls}`}>
       {pet.photo_url
-        ? <img src={pet.photo_url} alt={pet.name} className="w-9 h-9 rounded-full object-cover" />
+        ? <img src={assetUrl(pet.photo_url)} alt={pet.name} className="w-9 h-9 rounded-full object-cover" />
         : <PawPrint className="h-4 w-4" />}
     </div>
   );

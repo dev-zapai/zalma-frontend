@@ -13,12 +13,14 @@ function heatCellClass(count) {
   return 'bg-slate-50';
 }
 
-export default function AnalyticsAppointmentsTab({ currency }) {
-  const [period, setPeriod] = useState('month');
+export default function AnalyticsAppointmentsTab({ currency, days, customRange }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    api.get(`/g/analytics/appointments-ops?period=${period}`)
+    const params = customRange
+      ? { from_date: customRange.from, to_date: customRange.to }
+      : { days };
+    api.get('/g/analytics/appointments-ops', { params })
       .then(r => {
         const d = r.data;
         // Convert flat heatmap array [{day,hour,count}] to nested {dayIdx: {hour: count}}
@@ -33,25 +35,10 @@ export default function AnalyticsAppointmentsTab({ currency }) {
         setData(d);
       })
       .catch(e => console.error(e));
-  }, [period]);
+  }, [days, customRange]);
 
   return (
     <div className="space-y-6">
-      {/* Period selector */}
-      <div className="flex justify-end">
-        <div className="flex gap-1">
-          {['week', 'month', 'year'].map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1 text-xs rounded-md ${period === p ? 'bg-primary text-primary-foreground' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {p[0].toUpperCase() + p.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Rate cards */}
       {data ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">

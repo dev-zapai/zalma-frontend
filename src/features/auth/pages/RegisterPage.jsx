@@ -28,6 +28,9 @@ export default function RegisterPage() {
     salon_name: '', salon_type: 'pet_grooming', description: '',
     email: '', phone: '', address: '', city: '', state: '', country: '', postal_code: '',
     website_url: '', timezone: '', logo_url: '', theme_color: '#818cf8',
+    // Owner opts in to also being a working staff member. Default OFF — the
+    // owner is admin-only unless they check this.
+    owner_is_staff: false,
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -439,6 +442,24 @@ export default function RegisterPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Owner opts in to also being a working staff member (groomer).
+                  Default OFF — the owner is admin-only unless they check this. */}
+              <label className="flex items-start gap-3 rounded-lg border border-gray-200 p-3.5 cursor-pointer hover:border-indigo-300 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={salonForm.owner_is_staff}
+                  onChange={e => updateSalon('owner_is_staff', e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-indigo-500 focus:ring-indigo-400"
+                />
+                <span className="text-sm text-gray-700">
+                  I also work as a staff member
+                  <span className="block text-xs text-gray-400 mt-0.5">
+                    Adds you to the team roster, scheduling and payroll. You can set your designation and change this later in Team Management.
+                  </span>
+                </span>
+              </label>
+
               {error && <p data-testid="register-error" className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{error}</p>}
               <Button data-testid="register-salon-submit-btn" type="submit" disabled={loading} className="w-full rounded-lg h-11 bg-gray-900 text-white hover:bg-gray-800 text-sm font-semibold">
                 {loading ? 'Setting up...' : 'Launch My Salon'}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Card, CardContent } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
@@ -40,7 +41,7 @@ function KpiCard({ label, value, icon: Icon, color = 'text-primary' }) {
 
 /* ── Staff table ────────────────────────────────────────────────────────────── */
 
-function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sortBy, sortDir, onSort, tenantRoles = [], ownerUserId, currentUserId, onChange }) {
+function StaffTable({ isAdmin, canGrantAdmin, refreshKey, search, roleFilter, activeFilter, sortBy, sortDir, onSort, tenantRoles = [], ownerUserId, currentUserId, onChange }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -194,7 +195,7 @@ function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sor
                   <TableCell>
                     <div className="flex items-center gap-3">
                       {item.photo_url ? (
-                        <img src={item.photo_url} alt={item.full_name} className="w-9 h-9 rounded-full object-cover border border-slate-200" />
+                        <img src={assetUrl(item.photo_url)} alt={item.full_name} className="w-9 h-9 rounded-full object-cover border border-slate-200" />
                       ) : (
                         <div
                           className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
@@ -308,7 +309,9 @@ function StaffTable({ isAdmin, refreshKey, search, roleFilter, activeFilter, sor
               <div><Label>Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} type="email" className="mt-1.5" /></div>
               <div><Label>Phone</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="mt-1.5" /></div>
             </div>
-            {editUserId && (
+            {/* Only the OWNER can grant/revoke admin. Non-owner admins don't
+                see an editable admin switch. */}
+            {editUserId && canGrantAdmin && (
               <div className="flex items-center justify-between pt-2 border-t">
                 <div>
                   <Label className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> Admin Access</Label>
@@ -492,6 +495,7 @@ function TrashDialog({ open, onOpenChange, ownerUserId, onChange }) {
 export default function StaffPage() {
   const { profile } = useAuth();
   const isAdmin = profile?.is_admin || profile?.role === 'admin';
+  const isOwner = !!profile?.is_owner;  // only the owner can grant/revoke admin
   const [refreshKey, setRefreshKey] = useState(0);
 
   // KPIs + tenant roles
@@ -662,6 +666,7 @@ export default function StaffPage() {
 
       <StaffTable
         isAdmin={isAdmin}
+        canGrantAdmin={isOwner}
         refreshKey={refreshKey}
         search={debouncedSearch}
         roleFilter={roleFilter}
@@ -720,6 +725,9 @@ export default function StaffPage() {
               )}
             </div>
             <div><Label>Phone</Label><Input value={memberForm.phone} onChange={e => setMemberForm({ ...memberForm, phone: e.target.value })} className="mt-1.5" /></div>
+            {/* Only the owner can grant admin. Non-owner admins can add staff
+                but not create other admins (backend enforces this too). */}
+            {isOwner && (
             <div className="flex items-center justify-between pt-2 border-t">
               <div>
                 <Label className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" /> Also grant Admin access</Label>
@@ -727,6 +735,7 @@ export default function StaffPage() {
               </div>
               <Switch checked={grantAdmin} onCheckedChange={setGrantAdmin} />
             </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddMemberOpen(false)}>Cancel</Button>

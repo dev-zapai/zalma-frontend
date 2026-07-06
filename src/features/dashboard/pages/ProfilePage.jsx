@@ -1,21 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { Badge } from '@/shared/components/ui/badge';
+import { Switch } from '@/shared/components/ui/switch';
 import {
   ArrowLeft, User, Mail, Phone, MapPin, GraduationCap, FileText,
-  Save, Shield, Camera, Loader2, Trash2,
+  Save, Shield, Camera, Loader2, Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { fetchProfile } = useAuth();
+  const { profile, fetchProfile } = useAuth();
   const photoInputRef = useRef(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,6 +25,21 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
+  const [togglingStaff, setTogglingStaff] = useState(false);
+
+  const handleToggleStaff = async (nextIsStaff) => {
+    setTogglingStaff(true);
+    try {
+      await api.put('/profile/staff-status', { is_staff: nextIsStaff });
+      await fetchProfile();  // refresh flags (sidebar, gating) immediately
+      toast.success(nextIsStaff
+        ? 'You now appear in the team roster and scheduling.'
+        : 'Removed from the roster. Your history is preserved.');
+    } catch (e) {
+      toast.error('Could not update staff status');
+    }
+    setTogglingStaff(false);
+  };
 
   useEffect(() => {
     const fetch = async () => {
@@ -107,8 +124,11 @@ export default function ProfilePage() {
     );
   }
 
+  // Owner flag comes from the auth profile (/profile/me doesn't carry it).
+  const isOwner = !!profile?.is_owner;
   const isAdmin = data.is_admin || data.role === 'admin';
-  const isStaff = data.role === 'staff';
+  // "Staff-ness" is the live flag from the auth profile, not the legacy role.
+  const isStaff = !!profile?.is_staff;
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl">
@@ -128,7 +148,7 @@ export default function ProfilePage() {
           <div className="flex items-center gap-5">
             <div className="relative group">
               {data.photo_url ? (
-                <img src={data.photo_url} alt={data.full_name} className="w-20 h-20 rounded-full object-cover border-2 border-slate-200" />
+                <img src={assetUrl(data.photo_url)} alt={data.full_name} className="w-20 h-20 rounded-full object-cover border-2 border-slate-200" />
               ) : (
                 <div
                   className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-white"
@@ -153,35 +173,45 @@ export default function ProfilePage() {
                   <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                 </>
               )}
-              {editing && data.photo_url && (
-                <button
-                  onClick={handlePhotoDelete}
-                  disabled={uploading}
-                  className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center shadow-sm transition-colors"
-                  title="Remove photo"
-                >
-                  <Trash2 className="h-3 w-3 text-white" />
-                </button>
-              )}
             </div>
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold text-slate-900">{data.full_name}</h2>
               <p className="text-sm text-slate-500">{data.email}</p>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {data.role !== 'admin' && (
-                  <Badge className="rounded-full text-xs capitalize bg-primary/15 text-primary">
-                    {data.role}
-                  </Badge>
-                )}
-                {isAdmin && (
+                {/* Owner takes precedence over Admin (owner is always admin —
+                    showing "Admin" for the owner is wrong + redundant). Same
+                    dark badge style as before; only the label changes. */}
+                {(isOwner || isAdmin) && (
                   <Badge className="rounded-full text-xs bg-slate-900 text-white">
-                    <Shield className="h-3 w-3 mr-1" /> Admin
+                    <Shield className="h-3 w-3 mr-1" /> {isOwner ? 'Owner' : 'Admin'}
                   </Badge>
                 )}
                 {isStaff && data.staff_role && (
                   <Badge variant="outline" className="rounded-full text-xs">{data.staff_role}</Badge>
                 )}
               </div>
+              {editing && (
+                <div className="flex items-center gap-3 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={uploading}
+                    className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                  >
+                    {data.photo_url ? 'Change photo' : 'Upload photo'}
+                  </button>
+                  {data.photo_url && (
+                    <button
+                      type="button"
+                      onClick={handlePhotoDelete}
+                      disabled={uploading}
+                      className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
+                    >
+                      Remove photo
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             {!editing && (
               <Button variant="outline" onClick={() => setEditing(true)} className="shrink-0">
@@ -267,8 +297,13 @@ export default function ProfilePage() {
               <InfoRow label="Address" value={data.address} icon={<MapPin className="h-3.5 w-3.5 text-slate-400" />} />
               <InfoRow label="Role" value={
                 <span className="capitalize flex items-center gap-1.5">
-                  {data.role !== 'admin' && data.role}
-                  {isAdmin && <span className="bg-slate-900 text-white text-xs px-1.5 py-0.5 rounded-full">Admin</span>}
+                  {(isOwner || isAdmin) ? (
+                    <span className="bg-slate-900 text-white text-xs px-1.5 py-0.5 rounded-full">
+                      {isOwner ? 'Owner' : 'Admin'}
+                    </span>
+                  ) : (
+                    data.role
+                  )}
                 </span>
               } icon={<Shield className="h-3.5 w-3.5 text-slate-400" />} />
             </CardContent>
@@ -300,6 +335,34 @@ export default function ProfilePage() {
                 <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate('/dashboard/settings')}>
                   Go to Salon Settings
                 </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Work-as-staff self toggle — admins/owner choose whether they also
+              appear in the roster, scheduling and as a bookable provider.
+              Turning it off preserves all history; it just hides them from the
+              team list, availability and new bookings. */}
+          {isAdmin && (
+            <Card className="rounded-xl border-slate-200/60">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-4 w-4 text-primary" /> Work as a staff member
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-start justify-between gap-4">
+                  <p className="text-sm text-slate-500">
+                    When on, you appear in Team Management, availability and can be booked for
+                    appointments. Turning it off keeps all your past appointments and analytics —
+                    it only removes you from the roster and scheduling.
+                  </p>
+                  <Switch
+                    checked={!!profile?.is_staff}
+                    disabled={togglingStaff}
+                    onCheckedChange={handleToggleStaff}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}

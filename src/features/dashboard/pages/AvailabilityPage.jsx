@@ -64,6 +64,23 @@ export default function AvailabilityPage() {
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [weekData, setWeekData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Gates the first fetch until the profile-based default is resolved, so we
+  // never fire an "all staff" request that can land after — and overwrite —
+  // the correct single-staff one.
+  const [defaultReady, setDefaultReady] = useState(false);
+
+  // Default the staff filter to the logged-in user's OWN availability when
+  // they work as staff (owner/admin who also has a staff record). Anyone
+  // without a staff record falls back to "All staff". Runs once, so a manual
+  // dropdown change afterwards is never overridden.
+  const didSetDefaultStaff = useRef(false);
+  const reqIdRef = useRef(0);
+  useEffect(() => {
+    if (didSetDefaultStaff.current || !profile) return;
+    setSelectedStaff(profile.staff_id || 'all');
+    didSetDefaultStaff.current = true;
+    setDefaultReady(true);
+  }, [profile]);
 
   // ─── Data loading ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -73,19 +90,24 @@ export default function AvailabilityPage() {
   }, []);
 
   const fetchWeek = useCallback(async () => {
+    // Hold off until the profile-based default selection is resolved.
+    if (!defaultReady) return;
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     try {
       const params = { start_date: format(weekStart, 'yyyy-MM-dd') };
       if (selectedStaff !== 'all') params.staff_id = selectedStaff;
       const res = await api.get('/availability/week', { params });
+      if (reqId !== reqIdRef.current) return;  // a newer request superseded this one
       setWeekData(res.data);
     } catch (e) {
+      if (reqId !== reqIdRef.current) return;
       console.error(e);
       toast.error('Failed to load availability');
       setWeekData(null);
     }
-    setLoading(false);
-  }, [selectedStaff, weekStart]);
+    if (reqId === reqIdRef.current) setLoading(false);
+  }, [selectedStaff, weekStart, defaultReady]);
 
   useEffect(() => { fetchWeek(); }, [fetchWeek]);
 

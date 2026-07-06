@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -363,7 +364,7 @@ export default function PetDetailPage() {
         </Button>
         <div className="flex items-center gap-4 flex-1">
           {pet.photo_url ? (
-            <img src={pet.photo_url} alt={pet.name} className="w-16 h-16 rounded-full object-cover border-2 border-slate-200" />
+            <img src={assetUrl(pet.photo_url)} alt={pet.name} className="w-16 h-16 rounded-full object-cover border-2 border-slate-200" />
           ) : (
             <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center">
               <PawPrint className="h-7 w-7 text-amber-700" />

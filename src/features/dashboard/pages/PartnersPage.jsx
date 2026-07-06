@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
 import { Input } from '@/shared/components/ui/input';
@@ -162,7 +163,7 @@ export default function PartnersPage() {
                   }`}
                 >
                   {p.partner?.logo_url ? (
-                    <img src={p.partner.logo_url} alt="" className="w-11 h-11 rounded-full object-cover border shrink-0" />
+                    <img src={assetUrl(p.partner.logo_url)} alt="" className="w-11 h-11 rounded-full object-cover border shrink-0" />
                   ) : (
                     <div className="w-11 h-11 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
                       {p.partner?.name?.charAt(0)?.toUpperCase()}
@@ -198,7 +199,7 @@ export default function PartnersPage() {
                 {/* Chat header */}
                 <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200">
                   {activeChat?.partner?.logo_url ? (
-                    <img src={activeChat.partner.logo_url} alt="" className="w-9 h-9 rounded-full object-cover border" />
+                    <img src={assetUrl(activeChat.partner.logo_url)} alt="" className="w-9 h-9 rounded-full object-cover border" />
                   ) : (
                     <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
                       {activeChat?.partner?.name?.charAt(0)?.toUpperCase()}
@@ -267,7 +268,7 @@ export default function PartnersPage() {
               {activePartners.map(p => (
                 <div key={p.id} className="flex items-center gap-4 p-3 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors">
                   {p.partner?.logo_url ? (
-                    <img src={p.partner.logo_url} alt="" className="w-12 h-12 rounded-full object-cover border" />
+                    <img src={assetUrl(p.partner.logo_url)} alt="" className="w-12 h-12 rounded-full object-cover border" />
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-lg font-bold text-primary">
                       {p.partner?.name?.charAt(0)?.toUpperCase()}
@@ -305,7 +306,7 @@ export default function PartnersPage() {
               {pendingPartners.map(p => (
                 <div key={p.id} className="flex items-center gap-4 p-3 rounded-xl border border-slate-100">
                   {p.partner?.logo_url ? (
-                    <img src={p.partner.logo_url} alt="" className="w-12 h-12 rounded-full object-cover border" />
+                    <img src={assetUrl(p.partner.logo_url)} alt="" className="w-12 h-12 rounded-full object-cover border" />
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-lg font-bold text-primary">
                       {p.partner?.name?.charAt(0)?.toUpperCase()}

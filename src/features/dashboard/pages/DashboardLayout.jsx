@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/AuthContext';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { applyThemeColor } from '@/shared/lib/theme';
 
 import {
@@ -287,7 +288,7 @@ export default function DashboardLayout() {
               className={`rounded-lg hover:bg-slate-50 ${isCollapsed ? 'w-full flex justify-center py-2.5' : 'w-full flex items-center gap-3 px-3 py-2.5 text-left'}`}
             >
               {profile?.photo_url ? (
-                <img src={profile.photo_url} alt={profile.full_name} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                <img src={assetUrl(profile.photo_url)} alt={profile.full_name} className="w-8 h-8 rounded-full object-cover shrink-0" />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-xs font-bold text-primary shrink-0">
                   {profile?.full_name?.charAt(0)?.toUpperCase() || 'U'}

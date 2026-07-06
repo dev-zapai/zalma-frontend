@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
@@ -51,7 +52,7 @@ export default function SalonProfileDialog({ open, onOpenChange, tenantId, onPar
               <DialogHeader>
                 <div className="flex items-center gap-4">
                   {p.logo_url ? (
-                    <img src={p.logo_url} alt={p.name} className="w-14 h-14 rounded-xl object-cover border" />
+                    <img src={assetUrl(p.logo_url)} alt={p.name} className="w-14 h-14 rounded-xl object-cover border" />
                   ) : (
                     <div className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-bold text-white" style={{ backgroundColor: p.theme_color || '#6366F1' }}>
                       {p.name?.charAt(0)?.toUpperCase()}

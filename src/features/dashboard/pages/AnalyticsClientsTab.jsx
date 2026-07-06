@@ -7,33 +7,20 @@ import {
 } from 'recharts';
 import { formatPrice } from '@/shared/lib/currency';
 
-export default function AnalyticsClientsTab({ currency }) {
-  const [period, setPeriod] = useState('year');
+export default function AnalyticsClientsTab({ currency, days, customRange }) {
   const [data, setData] = useState(null);
 
   useEffect(() => {
-    api.get(`/g/analytics/clients-insights?period=${period}`)
+    const params = customRange
+      ? { from_date: customRange.from, to_date: customRange.to }
+      : { days };
+    api.get('/g/analytics/clients-insights', { params })
       .then(r => setData(r.data))
       .catch(e => console.error(e));
-  }, [period]);
+  }, [days, customRange]);
 
   return (
     <div className="space-y-6">
-      {/* Period selector */}
-      <div className="flex justify-end">
-        <div className="flex gap-1">
-          {['week', 'month', 'year'].map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1 text-xs rounded-md ${period === p ? 'bg-primary text-primary-foreground' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {p[0].toUpperCase() + p.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* KPI cards */}
       {data ? (
         <div className="grid grid-cols-2 gap-5">

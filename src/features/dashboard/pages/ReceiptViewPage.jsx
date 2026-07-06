@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { Card, CardContent } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
@@ -104,7 +105,7 @@ export default function ReceiptViewPage() {
           {/* ── HEADER (salon info) ── matches PDF headerBand */}
           <div className="flex items-start gap-4 pb-4 mb-4 border-b-2 border-primary">
             {showLogo && (
-              <img src={tenant.logo_url} alt={tenant.name} className="w-14 h-14 rounded-md object-contain" />
+              <img src={assetUrl(tenant.logo_url)} alt={tenant.name} className="w-14 h-14 rounded-md object-contain" />
             )}
             <div className="flex-1">
               <h1 className="text-xl font-bold text-slate-900">{tenant?.name || 'Salon'}</h1>

@@ -10,8 +10,7 @@ import { formatPrice } from '@/shared/lib/currency';
 
 const COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
-export default function AnalyticsRevenueTab({ currency }) {
-  const [period, setPeriod] = useState('month');
+export default function AnalyticsRevenueTab({ currency, days, customRange }) {
   const [data, setData] = useState(null);
   const [popularServices, setPopularServices] = useState([]);
 
@@ -22,28 +21,16 @@ export default function AnalyticsRevenueTab({ currency }) {
   }, []);
 
   useEffect(() => {
-    api.get(`/g/analytics/revenue-breakdown?period=${period}`)
+    const params = customRange
+      ? { from_date: customRange.from, to_date: customRange.to }
+      : { days };
+    api.get('/g/analytics/revenue-breakdown', { params })
       .then(r => setData(r.data))
       .catch(e => console.error(e));
-  }, [period]);
+  }, [days, customRange]);
 
   return (
     <div className="space-y-6">
-      {/* Period selector */}
-      <div className="flex justify-end">
-        <div className="flex gap-1">
-          {['week', 'month', 'year'].map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1 text-xs rounded-md ${period === p ? 'bg-primary text-primary-foreground' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {p[0].toUpperCase() + p.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-5">
         <Card className="rounded-xl border-slate-200/60">

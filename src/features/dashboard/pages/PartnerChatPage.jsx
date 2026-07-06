@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { ArrowLeft, Send, Loader2, RefreshCw } from 'lucide-react';
@@ -85,7 +86,7 @@ export default function PartnerChatPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         {partner?.logo_url ? (
-          <img src={partner.logo_url} alt={partner.name} className="w-9 h-9 rounded-lg object-cover border" />
+          <img src={assetUrl(partner.logo_url)} alt={partner.name} className="w-9 h-9 rounded-lg object-cover border" />
         ) : (
           <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
             {partner?.name?.charAt(0)?.toUpperCase() || '?'}
