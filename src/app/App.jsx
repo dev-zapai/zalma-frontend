@@ -53,18 +53,6 @@ import SalonAboutPage from "@/features/salon-website/pages/SalonAboutPage";
 import SalonContactPage from "@/features/salon-website/pages/SalonContactPage";
 import SalonBookPage from "@/features/salon-website/pages/SalonBookPage";
 
-// When the user clicks "Profile" we want them to land on the rich staff
-// detail page (with working hours, capabilities, leaves, etc.) instead of
-// the bare account-settings ProfilePage. If the user has no linked staff
-// record we fall back to the legacy ProfilePage.
-function ProfileRedirect() {
-  const { profile } = useAuth();
-  if (profile?.staff_id) {
-    return <Navigate to={`/dashboard/staff/member/${profile.staff_id}`} replace />;
-  }
-  return <ProfilePage />;
-}
-
 function ProtectedRoute({ children }) {
   const { profile, loading } = useAuth();
   const [hasCard, setHasCard] = useState(null);
@@ -96,7 +84,7 @@ function ProtectedRoute({ children }) {
     );
   }
 
-  // No profile = no session (cookie missing/invalid) — bounce to /login.
+  // No profile = no session (cookie missing/invalid) - bounce to /login.
   if (!profile) return <Navigate to="/login" replace />;
   if (profile?.must_change_password) {
     return <Navigate to="/change-password" replace />;
@@ -147,8 +135,8 @@ function App() {
           <Route path="/invite/:token" element={<AcceptInvitationPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
 
-          {/* Public salon website — multi-page (no auth required)
-              Lives under /s/:slug — customers book here */}
+          {/* Public salon website - multi-page (no auth required)
+              Lives under /s/:slug - customers book here */}
           <Route path="/s/:slug" element={<SalonWebsiteLayout />}>
             <Route index element={<SalonHomePage />} />
             <Route path="services" element={<SalonServicesPage />} />
@@ -178,7 +166,7 @@ function App() {
             <Route path="services" element={<ServicesPage />} />
             <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
-            <Route path="profile" element={<ProfileRedirect />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="explore" element={<ExploreMapPage />} />
             <Route path="partners" element={<PartnersPage />} />
             <Route path="partners/:partnershipId/chat" element={<PartnerChatPage />} />

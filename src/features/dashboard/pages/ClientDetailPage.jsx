@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
 import { assetUrl } from '@/shared/lib/assets';
+import AuAddressForm from '@/shared/components/AuAddressForm';
+import { formatFullAddress } from '@/shared/lib/auAddress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
@@ -115,9 +117,11 @@ export default function ClientDetailPage() {
         email: c.email || '',
         phone: c.phone || '',
         alternative_phone: c.alternative_phone || '',
+        unit: c.unit || '',
         address: c.address || '',
         postcode: c.postcode || '',
         suburb: c.suburb || '',
+        state: c.state || '',
         preferred_contact: c.preferred_contact || '',
         value_flag: c.value_flag || '',
         reliability_flag: c.reliability_flag ?? false,
@@ -141,9 +145,11 @@ export default function ClientDetailPage() {
         email: editForm.email || null,
         phone: editForm.phone || null,
         alternative_phone: editForm.alternative_phone || null,
+        unit: editForm.unit || null,
         address: editForm.address || null,
         postcode: editForm.postcode || null,
         suburb: editForm.suburb || null,
+        state: editForm.state || null,
         preferred_contact: cleanPreferredContact,
         value_flag: cleanValueFlag,
         reliability_flag: editForm.reliability_flag,
@@ -231,7 +237,11 @@ export default function ClientDetailPage() {
                 <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mt-0.5">
                   {client.phone && <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" /> {client.phone}</span>}
                   {client.email && <span className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" /> {client.email}</span>}
-                  {client.address && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {client.address}</span>}
+                  {(client.address || client.suburb) && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-3.5 w-3.5" /> {formatFullAddress(client)}
+                    </span>
+                  )}
                   {client.preferred_contact && (
                     <Badge variant="outline" className="rounded-full text-xs">Prefers {client.preferred_contact}</Badge>
                   )}
@@ -628,6 +638,7 @@ export default function ClientDetailPage() {
                   <SelectContent>
                     <SelectItem value="male">Male</SelectItem>
                     <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="desexed">Desexed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -702,20 +713,13 @@ export default function ClientDetailPage() {
                     </Select>
                   </div>
                 </div>
-                <div>
-                  <Label>Address</Label>
-                  <Input value={editForm.address || ''} onChange={e => setEditForm({ ...editForm, address: e.target.value })} className="mt-1.5" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Suburb</Label>
-                    <Input value={editForm.suburb || ''} onChange={e => setEditForm({ ...editForm, suburb: e.target.value })} className="mt-1.5" />
-                  </div>
-                  <div>
-                    <Label>Postcode</Label>
-                    <Input value={editForm.postcode || ''} onChange={e => setEditForm({ ...editForm, postcode: e.target.value })} className="mt-1.5" />
-                  </div>
-                </div>
+                {/* Australian structured address, inline with the rest of the form */}
+                <AuAddressForm
+                  value={editForm}
+                  onChange={({ latitude, longitude, ...patch }) => setEditForm(f => ({ ...f, ...patch }))}
+                  showUnit
+                  unitLabel="Unit / flat / building (optional)"
+                />
               </div>
             </div>
 

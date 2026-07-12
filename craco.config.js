@@ -77,4 +77,15 @@ webpackConfig.devServer = (devServerConfig) => {
   return devServerConfig;
 };
 
+// Jest needs the same '@' → src alias as webpack so components resolve in tests.
+webpackConfig.jest = {
+  configure: (jestConfig) => {
+    jestConfig.moduleNameMapper = {
+      '^@/(.*)$': '<rootDir>/src/$1',
+      ...(jestConfig.moduleNameMapper || {}),
+    };
+    return jestConfig;
+  },
+};
+
 module.exports = webpackConfig;

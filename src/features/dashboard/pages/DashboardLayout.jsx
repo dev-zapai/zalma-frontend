@@ -8,7 +8,7 @@ import { applyThemeColor } from '@/shared/lib/theme';
 import {
   LayoutDashboard, Calendar, CalendarCheck, UserCog, Scissors, BarChart3, Bell,
   Settings, LogOut, Menu, ChevronDown, ChevronLeft, ChevronRight,
-  UserCircle, Globe, MapPin, Dog, Heart, Plane, CreditCard, Handshake,
+  UserCircle, Globe, MapPin, Dog, Users, Plane, CreditCard, Handshake,
   Hourglass, Share2, Zap,
 } from 'lucide-react';
 import {
@@ -26,7 +26,7 @@ const NAV_ITEMS = [
   { to: '/dashboard/appointments', icon: CalendarCheck, label: 'Appointments', roles: ['admin', 'staff'] },
   { to: '/dashboard/waitlist', icon: Hourglass, label: 'Waitlist', roles: ['admin', 'staff'] },
   { to: '/dashboard/transfers', icon: Share2, label: 'Transfers', roles: ['admin'], plans: ['premium', 'ultimate'] },
-  { to: '/dashboard/clients', icon: Heart, label: 'Clients', roles: ['admin', 'staff'] },
+  { to: '/dashboard/clients', icon: Users, label: 'Clients', roles: ['admin', 'staff'] },
   { to: '/dashboard/pets', icon: Dog, label: 'Pets', roles: ['admin', 'staff'] },
   { to: '/dashboard/staff', icon: UserCog, label: 'Staff', roles: ['admin'] },
   { to: '/dashboard/absence', icon: Plane, label: 'Absence', roles: ['admin', 'staff'], plans: ['premium', 'ultimate'] },
@@ -41,7 +41,7 @@ const NAV_ITEMS = [
   { to: '/dashboard/profile', icon: UserCircle, label: 'Profile', roles: ['admin', 'staff'] },
 ];
 
-// Sidebar width constraints — collapsed state appears below COLLAPSE_THRESHOLD
+// Sidebar width constraints - collapsed state appears below COLLAPSE_THRESHOLD
 const SIDEBAR_MIN_EXPANDED = 180;
 const SIDEBAR_MAX_WIDTH = 400;
 const SIDEBAR_DEFAULT_WIDTH = 256;
@@ -102,7 +102,7 @@ export default function DashboardLayout() {
     }
   }, [sidebarWidth, isDragging]);
 
-  // Drag handlers — track via window so the cursor can leave the handle
+  // Drag handlers - track via window so the cursor can leave the handle
   const handleMouseDown = useCallback((e) => {
     e.preventDefault();
     setIsDragging(true);

@@ -741,7 +741,7 @@ export default function PetDetailPage() {
                         <div key={idx} className="flex items-center gap-3 p-2.5 rounded-lg bg-blue-50/50 border border-blue-100">
                           <FileText className="h-4 w-4 text-blue-600 shrink-0" />
                           <span className="text-sm text-slate-700 flex-1 min-w-0 truncate">{doc.filename || 'Document'}</span>
-                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1 shrink-0">
+                          <a href={assetUrl(doc.url)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1 shrink-0">
                             <ExternalLink className="h-3 w-3" /> View
                           </a>
                           <button onClick={() => handleDeleteVaccDoc(v.id, idx)} className="text-red-400 hover:text-red-600 shrink-0">
@@ -808,7 +808,7 @@ export default function PetDetailPage() {
                       <div key={idx} className="flex items-center gap-3 p-2.5 rounded-lg bg-blue-50/50 border border-blue-100">
                         <FileText className="h-4 w-4 text-blue-600 shrink-0" />
                         <span className="text-sm text-slate-700 flex-1 min-w-0 truncate">{doc.filename || 'Document'}</span>
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1 shrink-0">
+                        <a href={assetUrl(doc.url)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1 shrink-0">
                           <ExternalLink className="h-3 w-3" /> View
                         </a>
                         <button type="button" onClick={() => removeDocFromForm(setVaccForm, vaccForm, idx)} className="text-red-400 hover:text-red-600 shrink-0">
@@ -922,7 +922,7 @@ export default function PetDetailPage() {
                         <div key={idx} className="flex items-center gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
                           <FileText className="h-4 w-4 text-indigo-600 shrink-0" />
                           <span className="text-sm text-slate-700 flex-1 min-w-0 truncate">{doc.filename || 'Document'}</span>
-                          <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1 shrink-0">
+                          <a href={assetUrl(doc.url)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1 shrink-0">
                             <ExternalLink className="h-3 w-3" /> View
                           </a>
                           <button onClick={() => handleDeleteRegDoc(r.id, idx)} className="text-red-400 hover:text-red-600 shrink-0">
@@ -989,7 +989,7 @@ export default function PetDetailPage() {
                       <div key={idx} className="flex items-center gap-3 p-2.5 rounded-lg bg-indigo-50/50 border border-indigo-100">
                         <FileText className="h-4 w-4 text-indigo-600 shrink-0" />
                         <span className="text-sm text-slate-700 flex-1 min-w-0 truncate">{doc.filename || 'Document'}</span>
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1 shrink-0">
+                        <a href={assetUrl(doc.url)} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs flex items-center gap-1 shrink-0">
                           <ExternalLink className="h-3 w-3" /> View
                         </a>
                         <button type="button" onClick={() => removeDocFromForm(setRegForm, regForm, idx)} className="text-red-400 hover:text-red-600 shrink-0">
@@ -1072,6 +1072,7 @@ export default function PetDetailPage() {
                     <SelectContent>
                       <SelectItem value="male">Male</SelectItem>
                       <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="desexed">Desexed</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

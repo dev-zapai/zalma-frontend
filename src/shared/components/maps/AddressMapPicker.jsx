@@ -3,6 +3,25 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { MapPin, Search, Crosshair, Loader2 } from 'lucide-react';
+import { parseNominatimAddress } from '@/shared/lib/auAddress';
+
+// Normalise a Nominatim result into the fields we emit. Keeps the legacy
+// city/state/country/postal_code keys for existing consumers (Explore page)
+// while adding AU-structured suburb/state-code/postcode.
+function toEmittedFields(addr, displayName, lat, lng) {
+  const parsed = parseNominatimAddress(addr, displayName);
+  return {
+    address: parsed.street,
+    suburb: parsed.suburb,
+    city: parsed.suburb,
+    state: parsed.state || addr.state || '',
+    country: addr.country || 'Australia',
+    postcode: parsed.postcode,
+    postal_code: parsed.postcode,
+    latitude: lat,
+    longitude: lng,
+  };
+}
 
 // Fix default marker icon
 delete L.Icon.Default.prototype._getIconUrl;
@@ -63,21 +82,12 @@ export default function AddressMapPicker({ value, onChange, themeColor = '#7C3AE
   const reverseGeocode = useCallback(async (lat, lng) => {
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
-        { headers: { 'Accept-Language': 'en' } }
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1`,
+        { headers: { 'Accept-Language': 'en-AU' } }
       );
       const data = await res.json();
       if (data?.address) {
-        const addr = data.address;
-        onChange({
-          address: [addr.road, addr.house_number].filter(Boolean).join(' ') || data.display_name?.split(',')[0] || '',
-          city: addr.city || addr.town || addr.suburb || '',
-          state: addr.state || '',
-          country: addr.country || '',
-          postal_code: addr.postcode || '',
-          latitude: lat,
-          longitude: lng,
-        });
+        onChange(toEmittedFields(data.address, data.display_name, lat, lng));
       }
     } catch (e) {
       // Keep lat/lng even if reverse geocoding fails
@@ -99,8 +109,8 @@ export default function AddressMapPicker({ value, onChange, themeColor = '#7C3AE
     setSearchResults([]);
     try {
       const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`,
-        { headers: { 'Accept-Language': 'en' } }
+        `https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=au&q=${encodeURIComponent(searchQuery)}&limit=5&addressdetails=1`,
+        { headers: { 'Accept-Language': 'en-AU' } }
       );
       const data = await res.json();
       setSearchResults(data || []);
@@ -121,16 +131,7 @@ export default function AddressMapPicker({ value, onChange, themeColor = '#7C3AE
     if (mapRef.current) {
       mapRef.current.flyTo(pos, 16);
     }
-    const addr = result.address || {};
-    onChange({
-      address: [addr.road, addr.house_number].filter(Boolean).join(' ') || result.display_name?.split(',')[0] || '',
-      city: addr.city || addr.town || addr.suburb || '',
-      state: addr.state || '',
-      country: addr.country || '',
-      postal_code: addr.postcode || '',
-      latitude: lat,
-      longitude: lng,
-    });
+    onChange(toEmittedFields(result.address || {}, result.display_name, lat, lng));
   };
 
   const detectLocation = () => {

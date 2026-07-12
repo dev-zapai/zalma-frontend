@@ -145,24 +145,29 @@ export default function MemberDetailPage() {
     medicare_exemption: 'none',
     super_fund_name: '',
     super_fund_number: '',
+    super_usi: '',
     superannuation_rate: 11.5,
   });
+  const [uploadingCompliance, setUploadingCompliance] = useState(false);
   const APPTS_PER_PAGE = 10;
 
   const isSelf = profile?.staff_id && profile.staff_id === memberId;
   const canManage = currentIsAdmin || isSelf;
 
   // ── Permission matrix ──────────────────────────────────────────────────
-  const canEditPersonalInfo = canManage;        // contact info: admin or self
+  // Self (non-admin) may edit ONLY: own phone/address, bank details, service
+  // capabilities, photo, working hours, and upload documents. Everything else
+  // is admin/owner-only. Mirrors the backend field whitelist.
+  const canEditPersonalInfo = canManage;        // phone/address: admin or self (name/email locked below)
   const canEditWorkingHours = canManage;
   const canEditCapabilities = canManage;
-  const canUploadDocuments = canManage;         // docs: admin or self
-  const canDeleteDocuments = canManage;
+  const canUploadDocuments = canManage;         // upload: admin or self
+  const canDeleteDocuments = currentIsAdmin;    // delete: admin only (matches backend)
   const canEditEmployment = currentIsAdmin;     // pay, type, finance: admin only
   // Job-title edits are admin-level, but the ADMIN toggle is owner-only.
   const canEditRole = currentIsAdmin;           // role title: admin
   const canToggleAdmin = currentIsOwner;        // grant/revoke admin: owner only
-  const canEditQualification = canManage;       // qualification: admin or self
+  const canEditQualification = currentIsAdmin;  // qualification: admin only
 
   // ── Fetch appointments (separate, for KPI range changes) ─────────────
   const fetchAppointments = useCallback(async (range) => {
@@ -225,6 +230,7 @@ export default function MemberDetailPage() {
         medicare_exemption: memberRes.data.medicare_exemption || 'none',
         super_fund_name: memberRes.data.super_fund_name || '',
         super_fund_number: memberRes.data.super_fund_number || '',
+        super_usi: memberRes.data.super_usi || '',
         superannuation_rate: memberRes.data.superannuation_rate ?? 11.5,
       });
 
@@ -313,7 +319,7 @@ export default function MemberDetailPage() {
       toast.success(
         entries.length > 0
           ? `Working hours saved (${entries.length} day${entries.length > 1 ? 's' : ''} open)`
-          : 'Working hours cleared — all days closed'
+          : 'Working hours cleared - all days closed'
       );
 
       // Re-fetch the saved schedule so what's on screen matches what's in the DB
@@ -356,7 +362,12 @@ export default function MemberDetailPage() {
   const handleSaveContact = async () => {
     setSavingContact(true);
     try {
-      await api.put(`/staff/${memberId}`, contactForm);
+      // Email is the login identity - locked for everyone. Name is admin-only.
+      // Non-admin self may only change phone/address (backend enforces the same).
+      const payload = currentIsAdmin
+        ? { full_name: contactForm.full_name, phone: contactForm.phone, address: contactForm.address }
+        : { phone: contactForm.phone, address: contactForm.address };
+      await api.put(`/staff/${memberId}`, payload);
       setEditingContact(false);
       toast.success('Contact info updated');
       fetchData();
@@ -438,6 +449,34 @@ export default function MemberDetailPage() {
     } catch { toast.error('Failed to delete'); }
   };
 
+  // Letter of compliance (super fund) - stored as a staff document with a
+  // fixed doc_type so the Tax & Super card can find it. Replacing removes the
+  // previous letter so only one is current.
+  const handleComplianceUpload = async (e, previousLetter) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('The letter of compliance must be a PDF');
+      e.target.value = '';
+      return;
+    }
+    setUploadingCompliance(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('doc_type', 'super_compliance_letter');
+      await api.post(`/staff/${memberId}/documents`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      if (previousLetter) {
+        await api.delete(`/staff/${memberId}/documents/${previousLetter.id}`).catch(() => {});
+      }
+      const docRes = await api.get(`/staff/${memberId}/documents`);
+      setDocuments(docRes.data || []);
+      toast.success('Letter of compliance uploaded');
+    } catch { toast.error('Failed to upload letter'); }
+    setUploadingCompliance(false);
+    e.target.value = '';
+  };
+
   const handleToggleAdmin = async (checked) => {
     if (!memberUser) return;
     setSavingRole(true);
@@ -450,7 +489,7 @@ export default function MemberDetailPage() {
   };
 
   // Self-service: remove myself from the roster. Soft-hides my staff record
-  // (history preserved) — I leave Team Management, availability and bookings.
+  // (history preserved) - I leave Team Management, availability and bookings.
   // Since this page only exists while I'm staff, opting out navigates away.
   const handleRemoveSelfFromStaff = async () => {
     setSavingRole(true);
@@ -610,8 +649,16 @@ export default function MemberDetailPage() {
           <CardContent className="flex-1">
             {editingContact ? (
               <div className="space-y-3">
-                <div><Label className="text-xs">Full Name</Label><Input className="mt-1 h-8 text-sm" value={contactForm.full_name} onChange={e => setContactForm(f => ({ ...f, full_name: e.target.value }))} /></div>
-                <div><Label className="text-xs">Email</Label><Input className="mt-1 h-8 text-sm" type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} /></div>
+                <div>
+                  <Label className="text-xs">Full Name</Label>
+                  <Input className="mt-1 h-8 text-sm" value={contactForm.full_name} disabled={!currentIsAdmin} onChange={e => setContactForm(f => ({ ...f, full_name: e.target.value }))} />
+                  {!currentIsAdmin && <p className="text-[10px] text-slate-400 mt-0.5">Only an admin can change your name</p>}
+                </div>
+                <div>
+                  <Label className="text-xs">Email</Label>
+                  <Input className="mt-1 h-8 text-sm bg-slate-50" type="email" value={contactForm.email} disabled />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Email is the login and cannot be changed</p>
+                </div>
                 <div><Label className="text-xs">Phone</Label><Input className="mt-1 h-8 text-sm" value={contactForm.phone} onChange={e => setContactForm(f => ({ ...f, phone: e.target.value }))} /></div>
                 <div><Label className="text-xs">Address</Label><Input className="mt-1 h-8 text-sm" value={contactForm.address} onChange={e => setContactForm(f => ({ ...f, address: e.target.value }))} /></div>
                 <div className="flex gap-2 justify-end pt-2">
@@ -797,7 +844,7 @@ export default function MemberDetailPage() {
               )}
             </div>
 
-            {/* Admin toggle — OWNER ONLY. Non-owner admins can't grant/revoke
+            {/* Admin toggle - OWNER ONLY. Non-owner admins can't grant/revoke
                 admin (backend enforces this too). Owner can't be demoted. */}
             {canToggleAdmin && memberUser && !memberUser.is_owner && (
               <div className="flex items-center justify-between pt-3 border-t border-slate-100">
@@ -818,10 +865,11 @@ export default function MemberDetailPage() {
               </div>
             )}
 
-            {/* Self-service: I can remove MYSELF from the roster. Shown only on
-                my own record. Keeps all history; just hides me from the team
-                list, availability and new bookings. Re-enable from My Profile. */}
-            {isSelf && (
+            {/* Self-service for ADMIN/OWNER only: remove MYSELF from the roster.
+                The backend (PUT /profile/staff-status) is admin-gated, so hiding
+                it for non-admin staff avoids a guaranteed 403. Keeps all history;
+                just hides me from the team list, availability and new bookings. */}
+            {isSelf && currentIsAdmin && (
               <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                 <div>
                   <Label className="text-sm font-medium">Works as staff member</Label>
@@ -831,19 +879,22 @@ export default function MemberDetailPage() {
               </div>
             )}
 
-            {/* Documents - self-service upload, admin+self can view */}
-            {canManage && (
+            {/* Documents - self-service upload, admin+self can view. The super
+                compliance letter lives in the Tax & Super card, not here. */}
+            {canManage && (() => {
+              const generalDocs = documents.filter(d => d.doc_type !== 'super_compliance_letter');
+              return (
               <div className="pt-3 border-t border-slate-100">
                 <p className="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5">
-                  <File className="h-3.5 w-3.5" /> Documents {documents.length > 0 && `(${documents.length})`}
+                  <File className="h-3.5 w-3.5" /> Documents {generalDocs.length > 0 && `(${generalDocs.length})`}
                 </p>
-                {documents.length === 0 && <p className="text-xs text-slate-400 italic mb-2">No documents</p>}
+                {generalDocs.length === 0 && <p className="text-xs text-slate-400 italic mb-2">No documents</p>}
                 <div className="space-y-1.5 mb-2">
-                  {documents.map(doc => (
+                  {generalDocs.map(doc => (
                     <div key={doc.id} className="flex items-center justify-between p-1.5 rounded-md border border-slate-100 bg-slate-50/50">
                       <div className="flex items-center gap-2 min-w-0">
                         <Badge variant="outline" className="text-[10px] shrink-0 capitalize">{doc.doc_type}</Badge>
-                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline truncate">{doc.file_name}</a>
+                        <a href={assetUrl(doc.file_url)} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline truncate">{doc.file_name}</a>
                       </div>
                       {canDeleteDocuments && (
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 shrink-0" onClick={() => handleDeleteDoc(doc.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -862,7 +913,8 @@ export default function MemberDetailPage() {
                   </div>
                 )}
               </div>
-            )}
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
@@ -889,6 +941,7 @@ export default function MemberDetailPage() {
                   <div>
                     <Label className="text-xs">TFN (stored masked)</Label>
                     <Input className="mt-1 h-8 text-xs" value={taxForm.tfn_masked} onChange={e => setTaxForm(f => ({ ...f, tfn_masked: e.target.value }))} placeholder="123 456 789" />
+                    <p className="text-[10px] text-slate-400 mt-0.5">Optional for the employee, but without it the fund can't link the account and contributions are taxed at the top rate</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -925,16 +978,22 @@ export default function MemberDetailPage() {
                     <div>
                       <Label className="text-xs">Super Fund Name</Label>
                       <Input className="mt-1 h-8 text-xs" value={taxForm.super_fund_name} onChange={e => setTaxForm(f => ({ ...f, super_fund_name: e.target.value }))} placeholder="AustralianSuper" />
+                      <p className="text-[10px] text-slate-400 mt-0.5">The legal name of the fund</p>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <Label className="text-xs">Member / USI Number</Label>
-                        <Input className="mt-1 h-8 text-xs" value={taxForm.super_fund_number} onChange={e => setTaxForm(f => ({ ...f, super_fund_number: e.target.value }))} placeholder="STA0100AU" />
+                        <Label className="text-xs">USI</Label>
+                        <Input className="mt-1 h-8 text-xs" value={taxForm.super_usi} onChange={e => setTaxForm(f => ({ ...f, super_usi: e.target.value }))} placeholder="STA0100AU" />
+                        <p className="text-[10px] text-slate-400 mt-0.5">Unique Superannuation Identifier</p>
                       </div>
                       <div>
-                        <Label className="text-xs">SG Rate (%)</Label>
-                        <Input type="number" step="0.1" className="mt-1 h-8 text-xs" value={taxForm.superannuation_rate} onChange={e => setTaxForm(f => ({ ...f, superannuation_rate: e.target.value }))} placeholder="11.5" />
+                        <Label className="text-xs">Member Number</Label>
+                        <Input className="mt-1 h-8 text-xs" value={taxForm.super_fund_number} onChange={e => setTaxForm(f => ({ ...f, super_fund_number: e.target.value }))} placeholder="12345678" />
                       </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs">SG Rate (%)</Label>
+                      <Input type="number" step="0.1" className="mt-1 h-8 text-xs" value={taxForm.superannuation_rate} onChange={e => setTaxForm(f => ({ ...f, superannuation_rate: e.target.value }))} placeholder="11.5" />
                     </div>
                   </div>
                   <div className="flex gap-2 justify-end pt-2">
@@ -952,13 +1011,49 @@ export default function MemberDetailPage() {
                     <p className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold mb-1">Superannuation</p>
                   </div>
                   <InfoRow label="Fund Name" value={member.super_fund_name} />
-                  <InfoRow label="Member / USI" value={member.super_fund_number} />
+                  <InfoRow label="USI" value={member.super_usi} />
+                  <InfoRow label="Member Number" value={member.super_fund_number} />
                   <InfoRow label="SG Rate" value={member.superannuation_rate != null ? `${member.superannuation_rate}%` : '11.5%'} />
                   {!member.super_fund_name && currentIsAdmin && (
                     <p className="text-xs text-slate-400 mt-2 italic">Super fund not configured</p>
                   )}
                 </div>
               )}
+
+              {/* Letter of compliance - PDF kept with the staff documents under
+                  doc_type "super_compliance_letter"; managed from this card so
+                  the whole super setup lives in one place. Admin-only, matching
+                  the rest of the tax section. */}
+              {canManage && (() => {
+                const letter = documents.find(d => d.doc_type === 'super_compliance_letter');
+                return (
+                  <div className="border-t border-slate-100 mt-3 pt-3">
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold mb-1.5">Letter of Compliance</p>
+                    {letter ? (
+                      <div className="flex items-center gap-2">
+                        <File className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <a href={assetUrl(letter.file_url)} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline truncate flex-1">
+                          {letter.file_name}
+                        </a>
+                        {currentIsAdmin && (
+                          <label className="text-[10px] text-slate-500 hover:text-slate-700 underline cursor-pointer shrink-0">
+                            {uploadingCompliance ? 'Uploading…' : 'Replace'}
+                            <input type="file" accept=".pdf,application/pdf" className="hidden" onChange={e => handleComplianceUpload(e, letter)} disabled={uploadingCompliance} />
+                          </label>
+                        )}
+                      </div>
+                    ) : currentIsAdmin ? (
+                      <label className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline cursor-pointer">
+                        <Upload className="h-3 w-3" />
+                        {uploadingCompliance ? 'Uploading…' : 'Upload letter of compliance (PDF)'}
+                        <input type="file" accept=".pdf,application/pdf" className="hidden" onChange={e => handleComplianceUpload(e, null)} disabled={uploadingCompliance} />
+                      </label>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">Not uploaded</p>
+                    )}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 

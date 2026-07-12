@@ -14,6 +14,7 @@ import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Plus, Search, User, Mail, Phone, Edit, Trash2, Users, TrendingUp, UserPlus, Calendar, DollarSign, Star, ArrowUp, ArrowDown, MessageSquare, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 import { listItems } from '@/shared/lib/listResponse';
+import AuAddressForm from '@/shared/components/AuAddressForm';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { formatPrice } from '@/shared/lib/currency';
 
@@ -24,7 +25,7 @@ export default function ClientsPage() {
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState(null);
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', address: '', notes: '' });
+  const [form, setForm] = useState({ full_name: '', email: '', phone: '', unit: '', address: '', suburb: '', state: '', postcode: '', notes: '' });
   const [loading, setLoading] = useState(true);
   const [kpis, setKpis] = useState(null);
 
@@ -110,14 +111,18 @@ export default function ClientsPage() {
 
   const openNew = () => {
     setEditId(null);
-    setForm({ full_name: '', email: '', phone: '', address: '', notes: '' });
+    setForm({ full_name: '', email: '', phone: '', unit: '', address: '', suburb: '', state: '', postcode: '', notes: '' });
     setDialogOpen(true);
   };
 
   const openEdit = (c, e) => {
     e?.stopPropagation();
     setEditId(c.id);
-    setForm({ full_name: c.full_name, email: c.email || '', phone: c.phone || '', address: c.address || '', notes: c.notes || '' });
+    setForm({
+      full_name: c.full_name, email: c.email || '', phone: c.phone || '',
+      unit: c.unit || '', address: c.address || '', suburb: c.suburb || '', state: c.state || '', postcode: c.postcode || '',
+      notes: c.notes || '',
+    });
     setDialogOpen(true);
   };
 
@@ -469,10 +474,14 @@ export default function ClientsPage() {
                 <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+1 555-0123" className="mt-1.5" />
               </div>
             </div>
-            <div>
-              <Label>Address</Label>
-              <Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="123 Main St, City" className="mt-1.5" />
-            </div>
+            {/* Australian structured address, inline with the rest of the form.
+                Clients don't store coordinates, so drop lat/lng from picks. */}
+            <AuAddressForm
+              value={form}
+              onChange={({ latitude, longitude, ...patch }) => setForm(f => ({ ...f, ...patch }))}
+              showUnit
+              unitLabel="Unit / flat / building (optional)"
+            />
             <div>
               <Label>Notes</Label>
               <Input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Preferences, allergies, etc." className="mt-1.5" />

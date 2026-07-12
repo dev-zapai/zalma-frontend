@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '@/shared/lib/api';
+import { assetUrl } from '@/shared/lib/assets';
 import { useAuth } from '@/features/auth/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
@@ -289,7 +290,7 @@ export default function AbsencePage() {
                   <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
                     {l.reason && <p className="text-xs text-slate-600 italic">"{l.reason}"</p>}
                     {l.document_url && (
-                      <a href={l.document_url} target="_blank" rel="noopener noreferrer"
+                      <a href={assetUrl(l.document_url)} target="_blank" rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
                         <FileText className="h-3 w-3" /> View document <ExternalLink className="h-2.5 w-2.5" />
                       </a>

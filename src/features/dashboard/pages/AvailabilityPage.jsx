@@ -17,12 +17,11 @@ import { format, addDays, startOfWeek, parseISO, isSameDay } from 'date-fns';
 import { toast } from 'sonner';
 import { listItems } from '@/shared/lib/listResponse';
 
-// Salon operating envelope — staff never work outside these hours
-const HOUR_START = 6;   // 6 AM
-const HOUR_END = 23;    // 11 PM (exclusive)
-const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
+// Salon calendar envelope - DEFAULTS only. Admins can override per-tenant in
+// Settings → Calendar Hours (stored as settings.calendar_hour_start/_end).
+const DEFAULT_HOUR_START = 6;   // 6 AM
+const DEFAULT_HOUR_END = 23;    // 11 PM (exclusive)
 const ROW_HEIGHT = 48;
-const TOTAL_MINUTES = (HOUR_END - HOUR_START) * 60;
 
 const DAYS_OF_WEEK = [
   { idx: 0, label: 'Mon' },
@@ -34,24 +33,61 @@ const DAYS_OF_WEEK = [
   { idx: 6, label: 'Sun' },
 ];
 
-// Status colour system — 🟢🔵🟡🔴🟣
+// Status colour system. Design intent: open time reads as open space
+// (soft emerald), bookings are the strongest ink on the page (blue),
+// breaks are warm amber, and OFF time recedes into a quiet hatched slate
+// texture instead of an alarming red wall - red is not a schedule state.
 const STATUS_STYLES = {
-  available:   { bg: 'bg-green-100/80',  border: 'border-green-300',  text: 'text-green-800',  dot: 'bg-green-500',  label: 'Available' },
-  booked:      { bg: 'bg-blue-100/80',   border: 'border-blue-300',   text: 'text-blue-800',   dot: 'bg-blue-500',   label: 'Booked' },
-  break:       { bg: 'bg-yellow-100/80', border: 'border-yellow-300', text: 'text-yellow-800', dot: 'bg-yellow-500', label: 'Break' },
-  unavailable: { bg: 'bg-red-100/70',    border: 'border-red-300',    text: 'text-red-800',    dot: 'bg-red-500',    label: 'Unavailable' },
-  override:    { bg: 'bg-violet-100/80', border: 'border-violet-300', text: 'text-violet-800', dot: 'bg-violet-500', label: 'Override' },
+  available:   { bg: 'bg-emerald-50/80', accent: '#10B981', text: 'text-emerald-900', dot: 'bg-emerald-500', chip: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Available' },
+  booked:      { bg: 'bg-blue-50',       accent: '#3B82F6', text: 'text-blue-900',    dot: 'bg-blue-500',    chip: 'bg-blue-50 text-blue-700 border-blue-200',          label: 'Booked' },
+  break:       { bg: 'bg-amber-50',      accent: '#F59E0B', text: 'text-amber-900',   dot: 'bg-amber-400',   chip: 'bg-amber-50 text-amber-700 border-amber-200',       label: 'Break' },
+  unavailable: { bg: 'bg-slate-50',      accent: '#94A3B8', text: 'text-slate-500',   dot: 'bg-slate-400',   chip: 'bg-slate-100 text-slate-600 border-slate-200',      label: 'Off' },
+  override:    { bg: 'bg-violet-50',     accent: '#8B5CF6', text: 'text-violet-900',  dot: 'bg-violet-500',  chip: 'bg-violet-50 text-violet-700 border-violet-200',    label: 'Override' },
 };
 
-// Convert "HH:MM" → minutes since HOUR_START
-function hmToOffset(hm) {
+// Diagonal hatch used for whole-day OFF columns - texture, not alarm.
+const OFF_HATCH = 'repeating-linear-gradient(135deg, rgba(148,163,184,0.12) 0px, rgba(148,163,184,0.12) 5px, transparent 5px, transparent 13px)';
+
+// Convert "HH:MM" → minutes since the calendar's start hour
+function hmToOffset(hm, hourStart) {
   if (!hm) return 0;
   const [h, m] = hm.split(':').map(Number);
-  return Math.max(0, (h - HOUR_START) * 60 + m);
+  return Math.max(0, (h - hourStart) * 60 + m);
 }
 
-function clampOffset(min) {
-  return Math.max(0, Math.min(min, TOTAL_MINUTES));
+function clampOffset(min, totalMinutes) {
+  return Math.max(0, Math.min(min, totalMinutes));
+}
+
+// "14:30" → "2:30pm", "09:00" → "9am" - friendlier labels inside blocks
+function fmtHM(hm) {
+  if (!hm) return '';
+  const [h, m] = hm.split(':').map(Number);
+  const ap = h >= 12 ? 'pm' : 'am';
+  const hh = ((h + 11) % 12) + 1;
+  return m ? `${hh}:${String(m).padStart(2, '0')}${ap}` : `${hh}${ap}`;
+}
+
+// Per-staff week summary - hours of free (bookable) vs booked time.
+// `available` blocks from the API are the FREE remainder after breaks and
+// appointments are carved out, so summing them is honest "free" time.
+function weekSummary(staff, hourStart, totalMinutes) {
+  let free = 0, booked = 0;
+  (staff.days || []).forEach(d => {
+    if (d.is_off) return;
+    (d.blocks || []).forEach(b => {
+      const mins = clampOffset(hmToOffset(b.end, hourStart), totalMinutes)
+        - clampOffset(hmToOffset(b.start, hourStart), totalMinutes);
+      if (mins <= 0) return;
+      if (b.status === 'available' || b.status === 'override') free += mins;
+      else if (b.status === 'booked') booked += mins;
+    });
+  });
+  const fmt = (mins) => {
+    const h = mins / 60;
+    return h >= 10 ? `${Math.round(h)}h` : `${Math.round(h * 10) / 10}h`;
+  };
+  return { free: fmt(free), booked: fmt(booked), hasAny: free + booked > 0 };
 }
 
 export default function AvailabilityPage() {
@@ -65,7 +101,7 @@ export default function AvailabilityPage() {
   const [weekData, setWeekData] = useState(null);
   const [loading, setLoading] = useState(true);
   // Gates the first fetch until the profile-based default is resolved, so we
-  // never fire an "all staff" request that can land after — and overwrite —
+  // never fire an "all staff" request that can land after - and overwrite -
   // the correct single-staff one.
   const [defaultReady, setDefaultReady] = useState(false);
 
@@ -82,10 +118,31 @@ export default function AvailabilityPage() {
     setDefaultReady(true);
   }, [profile]);
 
+  // Tenant-configurable calendar envelope (Settings → Calendar Hours).
+  // Falls back to 6am–11pm when unset or invalid.
+  const [calHours, setCalHours] = useState({ start: DEFAULT_HOUR_START, end: DEFAULT_HOUR_END });
+  const hourStart = calHours.start;
+  const hourEnd = calHours.end;
+  const totalMinutes = (hourEnd - hourStart) * 60;
+  const hoursList = useMemo(
+    () => Array.from({ length: hourEnd - hourStart }, (_, i) => hourStart + i),
+    [hourStart, hourEnd]
+  );
+
   // ─── Data loading ───────────────────────────────────────────────────────
   useEffect(() => {
     api.get('/staff', { params: { limit: 200 } })
       .then(res => setStaffList(listItems(res.data)))
+      .catch(() => {});
+    api.get('/tenant/me')
+      .then(res => {
+        const s = res.data?.settings || {};
+        const start = parseInt(s.calendar_hour_start, 10);
+        const end = parseInt(s.calendar_hour_end, 10);
+        if (Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end <= 24 && start < end) {
+          setCalHours({ start, end });
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -124,88 +181,102 @@ export default function AvailabilityPage() {
     // detail page (not on the calendar) so the calendar stays focused on
     // booking.
     const isOff = day.is_off;
+    const isToday = isSameDay(parseISO(day.date), new Date());
 
-    // Grid lines via background-image so they paint as part of the column
-    // and can't be hidden by any other element / class. The cell is
-    // ROW_HEIGHT tall (one hour). We stack two repeating gradients:
-    //   * top of each cell  → solid 1px line (slate-400)   = the hour mark
-    //   * mid of each cell  → 1px dotted-style line (slate-300) = the :30 mark
-    // The mid-line is rendered as a stripe of "alternating-mid-pixel"
-    // colors so it reads as a half-hour indicator without requiring
-    // CSS dashed-border support.
+    // Quiet hour grid painted as part of the column background:
+    //   * hour mark  → 1px slate-200 line at each row top
+    //   * :30 mark   → 1px slate-100 whisper at mid-row
     const gridBackground = {
       backgroundImage: [
-        // Solid hour line at row top
-        'linear-gradient(to bottom, rgb(148 163 184) 1px, transparent 1px)',
-        // Mid-row half-hour line
-        'linear-gradient(to bottom, transparent calc(50% - 1px), rgb(203 213 225) calc(50% - 1px), rgb(203 213 225) 50%, transparent 50%)',
+        'linear-gradient(to bottom, rgb(226 232 240) 1px, transparent 1px)',
+        'linear-gradient(to bottom, transparent calc(50% - 1px), rgb(241 245 249) calc(50% - 1px), rgb(241 245 249) 50%, transparent 50%)',
       ].join(', '),
       backgroundSize: `100% ${ROW_HEIGHT}px, 100% ${ROW_HEIGHT}px`,
-      backgroundPosition: '0 0, 0 0',
       backgroundRepeat: 'repeat-y',
     };
 
+    // Whole-day off → hatched texture + a small quiet pill; no red wall.
+    const offBlock = isOff
+      ? blocks.find(b => b.start === '00:00' && b.end === '23:59')
+      : null;
+
     return (
       <div
-        className={`relative ${isOff ? 'bg-slate-50/30 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50/40'} transition-colors`}
+        className={`relative group transition-colors ${isOff ? 'cursor-default' : 'cursor-pointer hover:bg-primary/[0.03]'} ${isToday && !isOff ? 'bg-primary/[0.02]' : ''}`}
         style={{
-          height: `${(HOUR_END - HOUR_START) * ROW_HEIGHT}px`,
-          borderLeft: '1px solid rgb(148 163 184)', // slate-400 — clearly visible column separator
-          ...gridBackground,
+          height: `${(hourEnd - hourStart) * ROW_HEIGHT}px`,
+          borderLeft: '1px solid rgb(226 232 240)', // slate-200 - quiet column separator
+          ...(isOff
+            ? { backgroundImage: OFF_HATCH, backgroundColor: 'rgba(248,250,252,0.7)' }
+            : gridBackground),
         }}
         onClick={() => {
           if (isOff) return;
           navigate(`/dashboard/appointments/new?date=${day.date}&staff_id=${staff.id}`);
         }}
-        title={isOff ? 'Staff is unavailable' : 'Click to book on this day'}
+        title={isOff ? `${staff.full_name} is off this day` : 'Click to book on this day'}
       >
+        {/* Whole-day off pill */}
+        {isOff && (
+          <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-medium max-w-full ${offBlock && offBlock.status === 'override' ? STATUS_STYLES.override.chip : STATUS_STYLES.unavailable.chip}`}>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${offBlock && offBlock.status === 'override' ? STATUS_STYLES.override.dot : STATUS_STYLES.unavailable.dot}`} />
+              <span className="truncate">{(offBlock && offBlock.label) || 'Off'}</span>
+            </span>
+          </div>
+        )}
 
-        {/* Blocks */}
-        {blocks.map((b, i) => {
-          const startMin = clampOffset(hmToOffset(b.start));
-          const endMin = clampOffset(hmToOffset(b.end));
+        {/* Hover affordance: quiet "+ Book" chip at the top of bookable days */}
+        {!isOff && (
+          <div className="absolute top-1.5 inset-x-0 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold shadow-sm">
+              <Plus className="h-2.5 w-2.5" /> Book
+            </span>
+          </div>
+        )}
+
+        {/* Timed blocks */}
+        {!isOff && blocks.map((b, i) => {
+          const startMin = clampOffset(hmToOffset(b.start, hourStart), totalMinutes);
+          const endMin = clampOffset(hmToOffset(b.end, hourStart), totalMinutes);
           const top = (startMin / 60) * ROW_HEIGHT;
-          const height = Math.max(2, ((endMin - startMin) / 60) * ROW_HEIGHT);
+          const height = Math.max(3, ((endMin - startMin) / 60) * ROW_HEIGHT - 2);
           const style = STATUS_STYLES[b.status] || STATUS_STYLES.available;
-          // Don't render full-day "off"/"unavailable" blocks as overlays — they
-          // exceed the grid; instead show a centered label.
-          if (b.status === 'unavailable' || b.status === 'override') {
-            if (b.start === '00:00' && b.end === '23:59') {
-              return (
-                <div
-                  key={i}
-                  className={`absolute inset-1 rounded-md border ${style.bg} ${style.border} ${style.text} text-xs flex items-center justify-center font-medium`}
-                >
-                  {style.label}
-                  {b.label && b.label !== style.label && (
-                    <span className="ml-1 opacity-70">· {b.label}</span>
-                  )}
-                </div>
-              );
-            }
-          }
+          const showText = height >= 26;
           return (
             <div
               key={i}
-              className={`absolute left-1 right-1 rounded-md border ${style.bg} ${style.border} ${style.text} text-[10px] px-1.5 py-0.5 overflow-hidden`}
-              style={{ top: `${top}px`, height: `${height}px` }}
+              className={`absolute left-1 right-1.5 rounded-md ${style.bg} ${style.text} text-[10px] overflow-hidden ${b.status === 'booked' ? 'shadow-sm' : ''}`}
+              style={{
+                top: `${top + 1}px`,
+                height: `${height}px`,
+                borderLeft: `3px solid ${style.accent}`,
+              }}
+              title={`${style.label} · ${fmtHM(b.start)}–${fmtHM(b.end)}`}
             >
-              <p className="font-semibold leading-tight truncate">{style.label}</p>
-              <p className="opacity-75 truncate">{b.start}–{b.end}</p>
+              {showText && (
+                <div className="px-1.5 py-1 leading-tight">
+                  <p className="font-semibold truncate">{style.label}</p>
+                  <p className="opacity-70 truncate tabular-nums">{fmtHM(b.start)}–{fmtHM(b.end)}</p>
+                </div>
+              )}
             </div>
           );
         })}
 
-        {/* Today line */}
-        {isSameDay(parseISO(day.date), new Date()) && (() => {
+        {/* Now indicator - brand-coloured line with a pulsing dot and time chip */}
+        {isToday && (() => {
           const now = new Date();
-          const minSinceStart = (now.getHours() - HOUR_START) * 60 + now.getMinutes();
-          if (minSinceStart < 0 || minSinceStart > TOTAL_MINUTES) return null;
+          const minSinceStart = (now.getHours() - hourStart) * 60 + now.getMinutes();
+          if (minSinceStart < 0 || minSinceStart > totalMinutes) return null;
           const top = (minSinceStart / 60) * ROW_HEIGHT;
           return (
-            <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: `${top}px` }}>
-              <div className="border-t-2 border-red-500 relative">
-                <div className="absolute -left-1.5 -top-1.5 w-3 h-3 rounded-full bg-red-500" />
+            <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `${top}px` }}>
+              <div className="border-t-2 border-primary relative">
+                <span className="absolute -left-1 -top-[5px] w-2 h-2 rounded-full bg-primary motion-safe:animate-pulse" />
+                <span className="absolute right-1 -top-2 px-1 py-px rounded bg-primary text-primary-foreground text-[8px] font-semibold tabular-nums leading-none pt-0.5">
+                  {format(now, 'h:mm')}
+                </span>
               </div>
             </div>
           );
@@ -242,16 +313,16 @@ export default function AvailabilityPage() {
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-3 text-xs">
+      {/* Legend - soft status pills matching the block styling */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         {Object.entries(STATUS_STYLES).map(([key, s]) => (
-          <span key={key} className="flex items-center gap-1.5">
-            <span className={`w-2.5 h-2.5 rounded-full ${s.dot}`} />
-            <span className="text-slate-600">{s.label}</span>
+          <span key={key} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${s.chip}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+            {s.label}
           </span>
         ))}
-        <span className="ml-auto text-slate-400 italic">
-          Click any day column to book an appointment · edit working hours from the staff member's profile
+        <span className="ml-auto text-slate-400 hidden md:inline">
+          Click a day to book · working hours are edited on the staff profile
         </span>
       </div>
 
@@ -306,56 +377,70 @@ export default function AvailabilityPage() {
               <p className="text-sm">No staff to display</p>
             </div>
           ) : (
-            <div className="space-y-6 p-4">
-              {weekData.staff.map(staff => (
+            <div className="space-y-8 p-4">
+              {weekData.staff.map(staff => {
+                const summary = weekSummary(staff, hourStart, totalMinutes);
+                return (
                 <div key={staff.id}>
-                  {/* Staff header */}
-                  <div className="flex items-center gap-3 mb-2">
+                  {/* Staff header - avatar, name, and an honest week summary */}
+                  <div className="flex items-center gap-3 mb-3 flex-wrap">
                     <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ring-2 ring-white shadow-sm"
                       style={{ backgroundColor: staff.color }}
                     >
                       {staff.full_name.charAt(0).toUpperCase()}
                     </div>
                     <p className="text-sm font-semibold text-slate-900">{staff.full_name}</p>
+                    {summary.hasAny && (
+                      <div className="flex items-center gap-1.5 ml-1">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium ${STATUS_STYLES.available.chip}`}>
+                          {summary.free} free
+                        </span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium ${STATUS_STYLES.booked.chip}`}>
+                          {summary.booked} booked
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Day grid for this staff */}
                   <div className="overflow-x-auto">
-                    <div className="min-w-[760px]">
+                    <div className="min-w-[760px] rounded-lg border border-slate-200/80 overflow-hidden">
                       {/* Day header row */}
-                      <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-slate-200">
+                      <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-slate-200 bg-slate-50/60">
                         <div />
-                        {weekDays.map((d, i) => (
-                          <div
-                            key={i}
-                            className={`py-2 text-center border-l border-slate-100 ${isSameDay(d, new Date()) ? 'bg-primary/5' : ''}`}
-                          >
-                            <p className="text-[10px] uppercase text-slate-500 tracking-wide">
-                              {format(d, 'EEE')}
-                            </p>
-                            <p className={`text-sm font-semibold ${isSameDay(d, new Date()) ? 'text-primary' : 'text-slate-900'}`}>
-                              {format(d, 'd')}
-                            </p>
-                          </div>
-                        ))}
+                        {weekDays.map((d, i) => {
+                          const today = isSameDay(d, new Date());
+                          return (
+                            <div key={i} className="py-2 text-center border-l border-slate-200/60">
+                              <p className={`text-[10px] uppercase tracking-widest ${today ? 'text-primary font-semibold' : 'text-slate-400'}`}>
+                                {format(d, 'EEE')}
+                              </p>
+                              <p className="mt-0.5">
+                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-semibold ${today ? 'bg-primary text-primary-foreground shadow-sm' : 'text-slate-900'}`}>
+                                  {format(d, 'd')}
+                                </span>
+                              </p>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Hours + columns */}
-                      <div className="grid grid-cols-[60px_repeat(7,1fr)] relative">
+                      <div className="grid grid-cols-[60px_repeat(7,1fr)] relative bg-white">
                         {/* Hour labels */}
-                        <div className="relative" style={{ height: `${(HOUR_END - HOUR_START) * ROW_HEIGHT}px` }}>
-                          {HOURS.map((h, i) => {
+                        <div className="relative bg-slate-50/40" style={{ height: `${(hourEnd - hourStart) * ROW_HEIGHT}px` }}>
+                          {hoursList.map((h, i) => {
                             const label = h === 12 ? '12pm'
                               : h < 12 ? `${h}am`
                               : `${h - 12}pm`;
                             return (
                               <div
                                 key={h}
-                                className="absolute right-2 text-[10px] text-slate-400 -translate-y-1/2"
+                                className="absolute right-2 text-[10px] text-slate-400 tabular-nums -translate-y-1/2 select-none"
                                 style={{ top: `${i * ROW_HEIGHT}px` }}
                               >
-                                {label}
+                                {i > 0 && label}
                               </div>
                             );
                           })}
@@ -371,7 +456,8 @@ export default function AvailabilityPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

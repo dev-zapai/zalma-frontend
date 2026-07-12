@@ -9,10 +9,13 @@ import { Textarea } from '@/shared/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Switch } from '@/shared/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/shared/components/ui/dialog';
-import { Building2, Save, Check, Palette, Receipt, DollarSign, Clock, CreditCard, MessageSquare, ShieldCheck, AlertTriangle, Users, Plus, Trash2, Landmark } from 'lucide-react';
+import { Building2, Save, Check, Palette, Receipt, DollarSign, Clock, CreditCard, MessageSquare, ShieldCheck, AlertTriangle, Users, Plus, Trash2, Landmark, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { THEME_PRESETS, applyThemeColor } from '@/shared/lib/theme';
 import { CURRENCIES } from '@/shared/lib/currency';
+import AddressMapPicker from '@/shared/components/maps/AddressMapPicker';
+import AuAddressForm from '@/shared/components/AuAddressForm';
+import { composeStreetLine, isValidPostcode, formatFullAddress } from '@/shared/lib/auAddress';
 
 const DAYS = [
   { key: 'mon', label: 'Monday' },
@@ -31,7 +34,20 @@ const DEFAULT_HOURS = DAYS.reduce((acc, d) => {
 export default function SettingsPage() {
   const { profile } = useAuth();
   const [tenant, setTenant] = useState(null);
-  const [form, setForm] = useState({ name: '', type: 'pet_grooming', email: '', phone: '', address: '', theme_color: '#2563EB' });
+  const [form, setForm] = useState({ name: '', type: 'pet_grooming', email: '', phone: '', theme_color: '#2563EB' });
+
+  // Salon location & address - structured AU components + map pin.
+  // The composed street line is written to tenant.address; the raw parts are
+  // kept in settings.address_parts so re-editing shows the split fields.
+  const [salonAddr, setSalonAddr] = useState({
+    unit: '', address: '', suburb: '', state: '', postcode: '',
+    latitude: null, longitude: null,
+  });
+  const [savingAddress, setSavingAddress] = useState(false);
+  // The full address editor (map + fields) opens as a window from the
+  // Business Details address field. It edits a draft; saving commits.
+  const [addrDialogOpen, setAddrDialogOpen] = useState(false);
+  const [addrDraft, setAddrDraft] = useState(null);
   const [receiptConfig, setReceiptConfig] = useState({
     tagline: '', show_logo: true, tax_rate: 0, footer_text: '', terms: '', social_handles: '', next_visit_message: '',
   });
@@ -53,6 +69,10 @@ export default function SettingsPage() {
   const [terminals, setTerminals] = useState([]);
   const [savingTerminals, setSavingTerminals] = useState(false);
 
+  // Calendar hours - the visible envelope of the Availability calendar grid
+  const [calHourStart, setCalHourStart] = useState(6);
+  const [calHourEnd, setCalHourEnd] = useState(23);
+
   // Conflict check for closing a day
   const [conflictDialog, setConflictDialog] = useState(false);
   const [conflictData, setConflictData] = useState(null);
@@ -65,7 +85,19 @@ export default function SettingsPage() {
       try {
         const res = await api.get('/tenant/me');
         setTenant(res.data);
-        setForm({ name: res.data.name, type: res.data.type || 'pet_grooming', email: res.data.email || '', phone: res.data.phone || '', address: res.data.address || '', theme_color: res.data.theme_color || '#2563EB' });
+        setForm({ name: res.data.name, type: res.data.type || 'pet_grooming', email: res.data.email || '', phone: res.data.phone || '', theme_color: res.data.theme_color || '#2563EB' });
+        // Hydrate the salon address - prefer the structured parts saved by
+        // this card; fall back to the flat tenant columns for older data.
+        const parts = res.data.settings?.address_parts;
+        setSalonAddr({
+          unit: parts?.unit || '',
+          address: parts?.street ?? res.data.address ?? '',
+          suburb: parts?.suburb ?? res.data.city ?? '',
+          state: parts?.state ?? res.data.state ?? '',
+          postcode: parts?.postcode ?? res.data.postal_code ?? '',
+          latitude: res.data.latitude ?? null,
+          longitude: res.data.longitude ?? null,
+        });
         const rc = res.data.settings?.receipt_config || {};
         setReceiptConfig({
           tagline: rc.tagline || '',
@@ -79,7 +111,7 @@ export default function SettingsPage() {
         setCurrency(res.data.settings?.currency || 'AUD');
         setGstRegistered(res.data.settings?.gst_registered || false);
         setGstRate(res.data.settings?.gst_rate ?? 10);
-        // Staff roles — seed defaults if none configured
+        // Staff roles - seed defaults if none configured
         const savedRoles = res.data.settings?.roles;
         setRoles(savedRoles && savedRoles.length > 0 ? savedRoles : [
           { name: 'Groomer', color: '#6366F1' },
@@ -89,6 +121,11 @@ export default function SettingsPage() {
         ]);
         // Hydrate payment terminals
         setTerminals(res.data.settings?.payment_terminals || []);
+        // Hydrate calendar hours (Availability grid envelope)
+        const chs = parseInt(res.data.settings?.calendar_hour_start, 10);
+        const che = parseInt(res.data.settings?.calendar_hour_end, 10);
+        if (Number.isInteger(chs)) setCalHourStart(chs);
+        if (Number.isInteger(che)) setCalHourEnd(che);
         // Hydrate salon working hours
         const bh = res.data.business_hours || {};
         const merged = {};
@@ -149,7 +186,18 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <Label>Address</Label>
-                  <Input data-testid="settings-address" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} className="mt-1.5" />
+                  <button
+                    type="button"
+                    data-testid="settings-address"
+                    onClick={() => { setAddrDraft({ ...salonAddr }); setAddrDialogOpen(true); }}
+                    className="mt-1.5 w-full text-left text-sm border border-slate-200 rounded-md px-3 py-2 bg-white hover:border-primary/60 hover:bg-slate-50 transition-colors flex items-center justify-between gap-2"
+                    title="Set your salon address on the map"
+                  >
+                    <span className={`truncate ${formatFullAddress(salonAddr) ? 'text-slate-700' : 'text-slate-400'}`}>
+                      {formatFullAddress(salonAddr) || 'Click to set your salon address'}
+                    </span>
+                    <MapPin className="h-4 w-4 text-primary shrink-0" />
+                  </button>
                 </div>
 
                 {/* Currency */}
@@ -194,7 +242,7 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 </div>
-                {/* ABN — always visible + required. Printed on every receipt/payslip
+                {/* ABN - always visible + required. Printed on every receipt/payslip
                     for AU tax compliance, regardless of whether the salon is GST
                     registered. */}
                 <div className="border-t border-slate-100 pt-4 mt-2 space-y-3">
@@ -206,10 +254,10 @@ export default function SettingsPage() {
                       placeholder="51 824 753 556"
                       className="mt-1.5"
                     />
-                    <p className="text-xs text-slate-400 mt-1">Australian Business Number — required for tax-compliant receipts and payslips.</p>
+                    <p className="text-xs text-slate-400 mt-1">Australian Business Number - required for tax-compliant receipts and payslips.</p>
                   </div>
 
-                  {/* GST toggle — controls only the tax rate, ABN stands alone */}
+                  {/* GST toggle - controls only the tax rate, ABN stands alone */}
                   <div className="flex items-center justify-between pt-2">
                     <div>
                       <Label className="flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5" /> GST Registered</Label>
@@ -235,7 +283,7 @@ export default function SettingsPage() {
                 <Button
                   data-testid="settings-save-btn"
                   onClick={async () => {
-                    // Enforce ABN required — tax compliance is not optional
+                    // Enforce ABN required - tax compliance is not optional
                     const abn = (receiptConfig.abn || '').trim();
                     if (!abn) {
                       toast.error('ABN is required. Enter your Australian Business Number to continue.');
@@ -295,7 +343,7 @@ export default function SettingsPage() {
                           checked={!row.closed}
                           onCheckedChange={async (v) => {
                             if (!v) {
-                              // Closing a day — check for conflicts first
+                              // Closing a day - check for conflicts first
                               try {
                                 const res = await api.get('/tenant/check-day-conflicts', { params: { day_key: d.key } });
                                 if (res.data.conflict_count > 0) {
@@ -328,12 +376,61 @@ export default function SettingsPage() {
                     </div>
                   );
                 })}
+                {/* Calendar display window - the visible hour range of the
+                    Availability calendar grid. Saved together with the
+                    working hours by the button below. */}
+                <div className="pt-3 mt-1 border-t border-slate-100">
+                  <p className="text-sm font-medium text-slate-700">Calendar display window</p>
+                  <p className="text-xs text-slate-400 mt-0.5 mb-2">
+                    The hours shown on the Availability calendar grid. Match them to your real operating window so the calendar isn't padded with empty early-morning or late-night rows.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 max-w-xs">
+                    <div>
+                      <Label className="text-xs">Day starts at</Label>
+                      <Select value={String(calHourStart)} onValueChange={v => setCalHourStart(parseInt(v, 10))}>
+                        <SelectTrigger className="mt-1 h-9 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <SelectItem key={h} value={String(h)}>
+                              {h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Day ends at</Label>
+                      <Select value={String(calHourEnd)} onValueChange={v => setCalHourEnd(parseInt(v, 10))}>
+                        <SelectTrigger className="mt-1 h-9 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, i) => i + 1).map(h => (
+                            <SelectItem key={h} value={String(h)}>
+                              {h === 24 ? '12am (midnight)' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {calHourStart >= calHourEnd && (
+                    <p className="text-xs text-red-600 mt-1.5">The day must end after it starts.</p>
+                  )}
+                </div>
                 <div className="pt-2">
                   <Button
                     onClick={async () => {
+                      if (calHourStart >= calHourEnd) {
+                        toast.error('The calendar day must end after it starts');
+                        return;
+                      }
                       setSavingHours(true);
                       try {
-                        const res = await api.put('/tenant/me', { business_hours: hours });
+                        const settings = {
+                          ...(tenant?.settings || {}),
+                          calendar_hour_start: calHourStart,
+                          calendar_hour_end: calHourEnd,
+                        };
+                        const res = await api.put('/tenant/me', { business_hours: hours, settings });
                         setTenant(res.data);
                         toast.success('Working hours saved');
                       } catch { toast.error('Failed to save working hours'); }
@@ -350,6 +447,104 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* ── Salon Location & Address window - opened from the Business
+             Details address field. Edits a draft; saving commits to the
+             tenant. ── */}
+      <Dialog open={addrDialogOpen} onOpenChange={setAddrDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-primary" /> Salon Location &amp; Address
+            </DialogTitle>
+          </DialogHeader>
+          {addrDraft && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-slate-500">
+                Search for your salon, use your current location, or drop the pin on the exact building. Then confirm the full street address below. Clients see this on your website and use the pin to find you.
+              </p>
+              <AddressMapPicker
+                value={{
+                  address: addrDraft.address,
+                  city: addrDraft.suburb,
+                  state: addrDraft.state,
+                  postal_code: addrDraft.postcode,
+                  latitude: addrDraft.latitude,
+                  longitude: addrDraft.longitude,
+                }}
+                onChange={(p) => setAddrDraft(prev => ({
+                  ...prev,                        // keeps unit - the map can't know it
+                  address: p.address || prev.address,
+                  suburb: p.suburb || prev.suburb,
+                  state: p.state || prev.state,
+                  postcode: p.postcode || prev.postcode,
+                  latitude: p.latitude,
+                  longitude: p.longitude,
+                }))}
+              />
+              <AuAddressForm
+                value={addrDraft}
+                onChange={(patch) => setAddrDraft(prev => ({ ...prev, ...patch }))}
+                withSearch={false}
+                showUnit
+                unitLabel="Shop / unit / building name (optional)"
+              />
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddrDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={async () => {
+                if (!addrDraft.address || !addrDraft.suburb || !addrDraft.state) {
+                  toast.error('Street address, suburb and state are required');
+                  return;
+                }
+                if (!isValidPostcode(addrDraft.postcode)) {
+                  toast.error('Enter the 4-digit postcode');
+                  return;
+                }
+                setSavingAddress(true);
+                try {
+                  const settings = {
+                    ...(tenant.settings || {}),
+                    address_parts: {
+                      unit: addrDraft.unit || '',
+                      street: addrDraft.address,
+                      suburb: addrDraft.suburb,
+                      state: addrDraft.state,
+                      postcode: addrDraft.postcode,
+                    },
+                  };
+                  const payload = {
+                    address: composeStreetLine(addrDraft.unit, addrDraft.address),
+                    city: addrDraft.suburb,
+                    state: addrDraft.state,
+                    postal_code: addrDraft.postcode,
+                    country: 'Australia',
+                    settings,
+                  };
+                  if (addrDraft.latitude != null && addrDraft.longitude != null) {
+                    payload.latitude = addrDraft.latitude;
+                    payload.longitude = addrDraft.longitude;
+                  }
+                  const res = await api.put('/tenant/me', payload);
+                  setTenant(res.data);
+                  setSalonAddr({ ...addrDraft });
+                  setAddrDialogOpen(false);
+                  toast.success('Salon address saved');
+                } catch {
+                  toast.error('Failed to save address');
+                }
+                setSavingAddress(false);
+              }}
+              disabled={savingAddress}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
+            >
+              <Save className="h-4 w-4 mr-1.5" /> {savingAddress ? 'Saving...' : 'Save Salon Address'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── FULL WIDTH: Receipt Template ──────────────────────── */}
       {profile?.role === 'admin' && tenant && (

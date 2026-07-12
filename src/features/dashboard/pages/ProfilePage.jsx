@@ -56,14 +56,20 @@ export default function ProfilePage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await api.put('/profile/me', {
-        full_name: form.full_name,
-        phone: form.phone,
-        address: form.address,
-        qualification: form.qualification,
-        photo_url: form.photo_url,
-        staff_role: form.staff_role,
-      });
+      // Self-service policy: non-admins may only change contact details.
+      // Name / qualification / role-title are admin-only (backend enforces too).
+      const admin = data?.is_admin || data?.role === 'admin';
+      const payload = admin
+        ? {
+            full_name: form.full_name,
+            phone: form.phone,
+            address: form.address,
+            qualification: form.qualification,
+            photo_url: form.photo_url,
+            staff_role: form.staff_role,
+          }
+        : { phone: form.phone, address: form.address };
+      const res = await api.put('/profile/me', payload);
       setData(res.data);
       setForm(res.data);
       setEditing(false);
@@ -81,7 +87,7 @@ export default function ProfilePage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      // Don't set Content-Type — axios derives `multipart/form-data; boundary=...` from FormData.
+      // Don't set Content-Type - axios derives `multipart/form-data; boundary=...` from FormData.
       const res = await api.post('/profile/photo', formData);
       setData(prev => ({ ...prev, photo_url: res.data.url }));
       setForm(prev => ({ ...prev, photo_url: res.data.url }));
@@ -178,7 +184,7 @@ export default function ProfilePage() {
               <h2 className="text-xl font-bold text-slate-900">{data.full_name}</h2>
               <p className="text-sm text-slate-500">{data.email}</p>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {/* Owner takes precedence over Admin (owner is always admin —
+                {/* Owner takes precedence over Admin (owner is always admin -
                     showing "Admin" for the owner is wrong + redundant). Same
                     dark badge style as before; only the label changes. */}
                 {(isOwner || isAdmin) && (
@@ -214,9 +220,23 @@ export default function ProfilePage() {
               )}
             </div>
             {!editing && (
-              <Button variant="outline" onClick={() => setEditing(true)} className="shrink-0">
-                Edit Profile
-              </Button>
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                <Button variant="outline" onClick={() => setEditing(true)}>
+                  Edit Profile
+                </Button>
+                {/* Live staff record → link to the rich staff page (working
+                    hours, documents, leaves). Staff users have no other nav
+                    path to it since the Staff section is admin-only. */}
+                {data.record_id && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/dashboard/staff/member/${data.record_id}`)}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    View staff profile →
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </CardContent>
@@ -233,7 +253,8 @@ export default function ProfilePage() {
             <CardContent className="space-y-4">
               <div>
                 <Label>Full Name</Label>
-                <Input value={form.full_name || ''} onChange={e => setForm({ ...form, full_name: e.target.value })} className="mt-1.5" />
+                <Input value={form.full_name || ''} disabled={!isAdmin} onChange={e => setForm({ ...form, full_name: e.target.value })} className={`mt-1.5 ${!isAdmin ? 'bg-slate-50' : ''}`} />
+                {!isAdmin && <p className="text-xs text-slate-400 mt-1">Only an admin can change your name</p>}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -264,13 +285,14 @@ export default function ProfilePage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Role / Title</Label>
-                    <Input value={form.staff_role || ''} onChange={e => setForm({ ...form, staff_role: e.target.value })} placeholder="Groomer, Bather, Receptionist..." className="mt-1.5" />
+                    <Input value={form.staff_role || ''} disabled={!isAdmin} onChange={e => setForm({ ...form, staff_role: e.target.value })} placeholder="Groomer, Bather, Receptionist..." className={`mt-1.5 ${!isAdmin ? 'bg-slate-50' : ''}`} />
                   </div>
                   <div>
                     <Label>Qualification / Certifications</Label>
-                    <Input value={form.qualification || ''} onChange={e => setForm({ ...form, qualification: e.target.value })} placeholder="e.g. Pet Grooming Certificate" className="mt-1.5" />
+                    <Input value={form.qualification || ''} disabled={!isAdmin} onChange={e => setForm({ ...form, qualification: e.target.value })} placeholder="e.g. Pet Grooming Certificate" className={`mt-1.5 ${!isAdmin ? 'bg-slate-50' : ''}`} />
                   </div>
                 </div>
+                {!isAdmin && <p className="text-xs text-slate-400">Role and qualification are managed by your admin</p>}
               </CardContent>
             </Card>
           )}
@@ -339,7 +361,7 @@ export default function ProfilePage() {
             </Card>
           )}
 
-          {/* Work-as-staff self toggle — admins/owner choose whether they also
+          {/* Work-as-staff self toggle - admins/owner choose whether they also
               appear in the roster, scheduling and as a bookable provider.
               Turning it off preserves all history; it just hides them from the
               team list, availability and new bookings. */}
@@ -354,7 +376,7 @@ export default function ProfilePage() {
                 <div className="flex items-start justify-between gap-4">
                   <p className="text-sm text-slate-500">
                     When on, you appear in Team Management, availability and can be booked for
-                    appointments. Turning it off keeps all your past appointments and analytics —
+                    appointments. Turning it off keeps all your past appointments and analytics -
                     it only removes you from the roster and scheduling.
                   </p>
                   <Switch

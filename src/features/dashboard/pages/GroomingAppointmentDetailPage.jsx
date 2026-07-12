@@ -117,7 +117,7 @@ export default function GroomingAppointmentDetailPage() {
   const [rebookingDate, setRebookingDate] = useState('');
   const [savingRebooking, setSavingRebooking] = useState(false);
 
-  // Reschedule dialog state — keyed off the appointment's existing services
+  // Reschedule dialog state - keyed off the appointment's existing services
   // so the slot finder uses the same multi-service plan.
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleDate, setRescheduleDate] = useState('');
@@ -185,7 +185,7 @@ export default function GroomingAppointmentDetailPage() {
 
   // Rehydrate the receipt form from a saved receipt so the dialog shows
   // the actual stored values (instead of the hard-coded defaults) when an
-  // existing receipt is loaded — including the discount mode, the saved
+  // existing receipt is loaded - including the discount mode, the saved
   // discount % / amount, the tax rate that was used at the time, etc.
   useEffect(() => {
     if (!receipt) return;
@@ -264,11 +264,11 @@ export default function GroomingAppointmentDetailPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Fetch previous grooming context for this pet — STRICTLY from the
+  // Fetch previous grooming context for this pet - STRICTLY from the
   // immediately previous appointment only. No fallback to older ones.
   //
   // If the last appointment had no notes and no feedback, the context card
-  // doesn't render at all — showing stale data from 2+ visits ago is
+  // doesn't render at all - showing stale data from 2+ visits ago is
   // confusing and misleading.
   //
   // Also ignores orphan grooming notes (appointment_id = NULL) that were
@@ -282,7 +282,7 @@ export default function GroomingAppointmentDetailPage() {
     api.get(`/pets/${appt.pet_id}/appointments`, { params: { limit: 10 } })
       .then(async (res) => {
         const items = listItems(res.data);
-        // The immediately previous appointment — first one in desc list
+        // The immediately previous appointment - first one in desc list
         // that isn't the current appointment.
         const prev = items.find(a => a.id !== appointmentId);
         if (!prev) return; // First appointment for this pet - nothing to show.
@@ -296,12 +296,12 @@ export default function GroomingAppointmentDetailPage() {
           }).catch(() => ({ data: [] })),
         ]);
 
-        // Feedback — strictly from the previous appointment only
+        // Feedback - strictly from the previous appointment only
         if (detailRes?.data?.feedback) {
           setPrevFeedback(detailRes.data.feedback);
         }
 
-        // Grooming note — strictly from the previous appointment only
+        // Grooming note - strictly from the previous appointment only
         // (appointment_id must match prev.id, not just "any note for this pet")
         const prevNotes = listItems(notesRes.data);
         if (prevNotes.length > 0) {
@@ -485,7 +485,7 @@ export default function GroomingAppointmentDetailPage() {
   };
 
   // ─── Generate receipt ──────────────────────────────────────────────────────
-  // `terminal` (optional) — when payment was taken on an EFTPOS terminal, we
+  // `terminal` (optional) - when payment was taken on an EFTPOS terminal, we
   // tag the receipt with the bank + terminal id so the audit trail is clear.
   const handleGenerateReceipt = async (terminal = null) => {
     try {
@@ -518,7 +518,7 @@ export default function GroomingAppointmentDetailPage() {
   };
 
   // Entry point from the "Generate Receipt" button. If staff chose Terminal,
-  // open the terminal picker — otherwise go straight to receipt.
+  // open the terminal picker - otherwise go straight to receipt.
   const onClickGenerateReceipt = () => {
     if (receiptForm.payment_method === 'terminal') {
       const active = (tenant?.settings?.payment_terminals || []).filter(t => t.active !== false);
@@ -999,7 +999,7 @@ export default function GroomingAppointmentDetailPage() {
                   ) : apptServices.map(item => {
                     // Capability filter: only staff who can perform this service.
                     // The services list endpoint returns `staff_ids` per
-                    // service (from migration 024) — fall back to the full
+                    // service (from migration 024) - fall back to the full
                     // staff list if a service has no capability mapping yet
                     // so the dropdown isn't unusable on legacy data.
                     const svcMeta = services.find(s => s.id === item.service_id);
@@ -1820,6 +1820,7 @@ export default function GroomingAppointmentDetailPage() {
                         <SelectContent>
                           <SelectItem value="male">Male</SelectItem>
                           <SelectItem value="female">Female</SelectItem>
+                          <SelectItem value="desexed">Desexed</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

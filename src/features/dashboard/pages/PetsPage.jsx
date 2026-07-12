@@ -151,6 +151,18 @@ export default function PetsPage() {
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
+    // Explicit validation with feedback - the submit button used to be
+    // silently disabled, which read as "Add Pet does nothing".
+    if (!form.name) {
+      toast.error('Pet name is required');
+      return;
+    }
+    if (!form.owner_id) {
+      toast.error(clients.length === 0
+        ? 'No clients yet - add the owner on the Clients page first, then add their pet.'
+        : 'Please select the pet’s owner');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {};
@@ -419,7 +431,13 @@ export default function PetsPage() {
                 <Select value={form.owner_id} onValueChange={v => setForm({ ...form, owner_id: v })}>
                   <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select owner" /></SelectTrigger>
                   <SelectContent>
-                    {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
+                    {clients.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-slate-400">
+                        No clients yet - add the owner on the Clients page first.
+                      </div>
+                    ) : (
+                      clients.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -447,6 +465,7 @@ export default function PetsPage() {
                   <SelectContent>
                     <SelectItem value="male">Male</SelectItem>
                     <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="desexed">Desexed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -493,7 +512,7 @@ export default function PetsPage() {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button
               onClick={handleSave}
-              disabled={!form.name || !form.owner_id || saving}
+              disabled={saving}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {saving ? 'Adding...' : 'Add Pet'}
