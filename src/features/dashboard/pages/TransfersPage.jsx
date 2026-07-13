@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import api from '@/shared/lib/api';
 import { Card, CardContent } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
@@ -22,16 +22,16 @@ export default function TransfersPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchList = async () => {
+  const fetchList = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/g/transfers/${direction}`);
       setItems(listItems(res.data));
     } catch { toast.error('Failed to load transfers'); }
     setLoading(false);
-  };
+  }, [direction]);
 
-  useEffect(() => { fetchList(); }, [direction]);
+  useEffect(() => { fetchList(); }, [fetchList]);
 
   const handleAccept = async (t) => {
     if (!window.confirm(`Accept transfer for ${t.client_snapshot?.full_name || 'client'}?`)) return;
