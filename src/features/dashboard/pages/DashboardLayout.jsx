@@ -186,10 +186,25 @@ export default function DashboardLayout() {
           className="flex items-center hover:opacity-80 transition-opacity"
           aria-label="Go to Dashboard"
         >
-          <img
-            src={`${process.env.PUBLIC_URL || ''}/${isCollapsed ? 'zalma_short_logo.png' : 'zalma_logo.png'}`}
-            alt="Zalma"
-            style={{ height: isCollapsed ? '28px' : '26px', width: 'auto' }}
+          {/* The logo PNG is used as a mask over the live theme color, so
+              changing the Theme Color in Settings recolors the logo to match
+              instead of staying brand blue. */}
+          <div
+            role="img"
+            aria-label="Zalma"
+            style={{
+              height: isCollapsed ? '28px' : '26px',
+              width: isCollapsed ? '28px' : '96px',
+              backgroundColor: 'hsl(var(--primary))',
+              WebkitMaskImage: `url(${process.env.PUBLIC_URL || ''}/${isCollapsed ? 'zalma_short_logo.png' : 'zalma_logo.png'})`,
+              maskImage: `url(${process.env.PUBLIC_URL || ''}/${isCollapsed ? 'zalma_short_logo.png' : 'zalma_logo.png'})`,
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskPosition: 'left center',
+              maskPosition: 'left center',
+            }}
           />
         </NavLink>
       </div>

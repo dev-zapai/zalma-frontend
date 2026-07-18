@@ -8,7 +8,7 @@ import { Badge } from '@/shared/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Search, ChevronLeft, ChevronRight, Plus, CalendarCheck } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import { salonDateTime } from '@/shared/lib/salonTime';
 import { listItems } from '@/shared/lib/listResponse';
 import { formatPrice } from '@/shared/lib/currency';
 
@@ -48,6 +48,7 @@ export default function AppointmentsPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [total, setTotal] = useState(0);
   const [currency, setCurrency] = useState('AUD');
+  const [salonTz, setSalonTz] = useState(null);
 
   const search = (searchParams.get('search') || '').toLowerCase();
   const statusFilter = searchParams.get('status') || 'all';
@@ -60,7 +61,10 @@ export default function AppointmentsPage() {
       .then(r => setStaffMembers(listItems(r.data)))
       .catch(() => {});
     api.get('/tenant/me')
-      .then(r => setCurrency(r.data?.settings?.currency || 'AUD'))
+      .then(r => {
+        setCurrency(r.data?.settings?.currency || 'AUD');
+        setSalonTz(r.data?.timezone || null);
+      })
       .catch(() => {});
   }, []);
 
@@ -202,7 +206,6 @@ export default function AppointmentsPage() {
               <TableBody>
                 {filtered.map(a => {
                   const owner = a.client?.full_name || a.client?.full_name || '-';
-                  const dt = a.start_time ? parseISO(a.start_time) : null;
                   return (
                     <TableRow
                       key={a.id}
@@ -220,7 +223,8 @@ export default function AppointmentsPage() {
                       <TableCell className="text-slate-600">{a.staff?.full_name || '-'}</TableCell>
                       <TableCell className="text-slate-600">{a.service?.name || '-'}</TableCell>
                       <TableCell className="text-slate-600">
-                        {dt ? format(dt, 'MMM d, h:mm a') : '-'}
+                        {/* Salon wall-clock time, not the browser's timezone */}
+                        {a.start_time ? salonDateTime(a.start_time, salonTz) : '-'}
                       </TableCell>
                       <TableCell>
                         <Badge className={`rounded-full text-xs ${STATUS_STYLES[a.status] || 'bg-slate-100 text-slate-700'}`}>

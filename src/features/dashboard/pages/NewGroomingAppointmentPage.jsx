@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { formatPrice } from '@/shared/lib/currency';
+import { salonTodayISO, salonNowTime } from '@/shared/lib/salonTime';
 
 const SPECIES_OPTIONS = [
   { value: 'dog', label: 'Dog' },
@@ -48,6 +49,8 @@ export default function NewGroomingAppointmentPage() {
 
   // Services
   const [allServices, setAllServices] = useState([]);
+  const [bundles, setBundles] = useState([]);
+  const [salonTz, setSalonTz] = useState(null);
   const [selectedServices, setSelectedServices] = useState([]);
   const [currency, setCurrency] = useState('AUD');
 
@@ -79,17 +82,20 @@ export default function NewGroomingAppointmentPage() {
     Promise.all([
       api.get('/services', { params: { limit: 200 } }),
       api.get('/tenant/me'),
+      api.get('/service-bundles').catch(() => ({ data: [] })),
       ...(preselectedClientId
         ? [
             api.get(`/clients/${preselectedClientId}`),
             api.get(`/clients/${preselectedClientId}/pets`, { params: { limit: 200 } }),
           ]
         : []),
-    ]).then(([svcRes, tenantRes, clientRes, petsRes]) => {
+    ]).then(([svcRes, tenantRes, bundleRes, clientRes, petsRes]) => {
       const svcData = svcRes.data;
       const items = Array.isArray(svcData) ? svcData : (svcData?.items || []);
       setAllServices(items);
       setCurrency(tenantRes.data?.settings?.currency || 'AUD');
+      setSalonTz(tenantRes.data?.timezone || null);
+      setBundles((bundleRes?.data || []).filter(b => b.is_active !== false));
 
       // If client was pre-selected via ?client_id=...
       if (clientRes?.data) {
@@ -163,7 +169,14 @@ export default function NewGroomingAppointmentPage() {
       }
     }).then(res => {
       setSlots(res.data || []);
-    }).catch(() => setSlots([]))
+    }).catch(err => {
+      // A server error is NOT the same as a fully booked day - say so,
+      // instead of silently showing "No slots available".
+      console.error(err);
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Could not load available slots. Please try again.');
+      setSlots([]);
+    })
       .finally(() => setLoadingSlots(false));
   }, [selectedDate, selectedServices]);
 
@@ -189,11 +202,11 @@ export default function NewGroomingAppointmentPage() {
   };
 
   // ── Book appointment ──
-  // Uses the new /multi-book endpoint which atomically creates the
-  // appointment + per-service rows with each service's auto-allocated
-  // groomer + start/end. For brand new clients (no client_id yet) we
-  // still need to provision the client/pet first via /quick-book, then
-  // call multi-book to write the per-service plan.
+  // Uses the /multi-book endpoint which atomically creates the appointment
+  // + per-service rows with each service's auto-allocated groomer +
+  // start/end, and re-verifies the slot server-side (409 if it was taken).
+  // Brand-new clients are provisioned directly via /clients + /pets - the
+  // old quick-book placeholder hack billed every new-client booking twice.
   const handleBook = async () => {
     if (selectedServices.length === 0 || !selectedSlot) return;
     if (!selectedSlot.allocations?.length) {
@@ -205,31 +218,23 @@ export default function NewGroomingAppointmentPage() {
       let clientId = foundClient?.id;
       let petId = selectedPet?.id;
 
-      // For brand-new clients we still bootstrap the client + pet via the
-      // existing quick-book endpoint (which handles find-or-create + status
-      // = "pending"). We pass dummy times so it builds the records, then we
-      // use the returned appointment id to clean up before multi-book.
       if (!clientId) {
-        const startDt = new Date(`${selectedDate}T${selectedSlot.start_time}`);
-        const endDt = new Date(startDt.getTime() + 30 * 60000);
-        const qbRes = await api.post('/g/appointments/quick-book', null, {
-          params: {
-            client_name: clientName,
-            client_phone: phoneLookup,
-            pet_name: petName,
-            pet_species: petSpecies,
-            staff_id: selectedSlot.allocations[0].staff_id,
-            start_time: startDt.toISOString(),
-            end_time: endDt.toISOString(),
-          },
+        const clientRes = await api.post('/clients', {
+          full_name: clientName,
+          phone: phoneLookup || null,
         });
-        // The quick-book created a placeholder appointment we don't need —
-        // delete it so we can let multi-book create the real one.
-        if (qbRes.data?.id) {
-          await api.delete(`/g/appointments/${qbRes.data.id}`).catch(() => {});
+        clientId = clientRes.data.id;
+        // Walk-in style booking: the client completes their profile at
+        // check-in, so mark them pending like quick-book used to.
+        await api.put(`/clients/${clientId}`, { registration_status: 'pending' }).catch(() => {});
+        if (petName) {
+          const petRes = await api.post('/pets', {
+            owner_id: clientId,
+            name: petName,
+            species: petSpecies || 'Dog',
+          });
+          petId = petRes.data.id;
         }
-        clientId = qbRes.data?.client?.id || qbRes.data?.client_id;
-        petId = qbRes.data?.pet?.id || qbRes.data?.pet_id;
       }
 
       const res = await api.post('/g/appointments/multi-book', {
@@ -482,41 +487,115 @@ export default function NewGroomingAppointmentPage() {
           <CardContent className="space-y-4">
             <p className="text-sm text-slate-500">Select one or more services for this appointment.</p>
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {allServices.filter(svc => {
-                // Filter by pet species when available
+              {(() => {
                 const petSpecies = (selectedPet?.species || newPetSpecies || '').toLowerCase();
-                if (!svc.compatible_species || svc.compatible_species.length === 0) return true;
-                return svc.compatible_species.map(s => s.toLowerCase()).includes(petSpecies);
-              }).map(svc => {
-                const checked = selectedServices.includes(svc.id);
-                return (
-                  <label
-                    key={svc.id}
-                    className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                      checked
-                        ? 'border-amber-500 bg-amber-50'
-                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        setSelectedServices(prev =>
-                          checked ? prev.filter(id => id !== svc.id) : [...prev, svc.id]
-                        );
-                        setSelectedSlot(null);
-                      }}
-                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-slate-900">{svc.name}</p>
-                      <p className="text-xs text-slate-500">{svc.duration_minutes} min</p>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-700">{formatPrice(svc.price, currency)}</span>
-                  </label>
-                );
-              })}
+                const speciesList = (svc) => {
+                  // compatible_species is a JSON array from the API; be
+                  // defensive about a raw JSON string from older rows.
+                  let list = svc.compatible_species;
+                  if (typeof list === 'string') {
+                    try { list = JSON.parse(list); } catch { list = null; }
+                  }
+                  return Array.isArray(list) ? list.map(s => String(s).toLowerCase()) : [];
+                };
+                const isCompatible = (svc) => {
+                  const list = speciesList(svc);
+                  return list.length === 0 || !petSpecies || list.includes(petSpecies);
+                };
+
+                const bundleBlocks = bundles.map(b => {
+                  const itemIds = (b.items || []).map(i => i.service_id).filter(Boolean);
+                  if (itemIds.length === 0) return null;
+                  const memberSvcs = itemIds.map(id => allServices.find(s => s.id === id)).filter(Boolean);
+                  const bundleCompatible = memberSvcs.every(isCompatible);
+                  const allSelected = itemIds.every(id => selectedServices.includes(id));
+                  return (
+                    <label
+                      key={`bundle-${b.id}`}
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
+                        !bundleCompatible
+                          ? 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'
+                          : allSelected
+                            ? 'border-amber-500 bg-amber-50 cursor-pointer'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 cursor-pointer'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        disabled={!bundleCompatible}
+                        onChange={() => {
+                          setSelectedServices(prev => allSelected
+                            ? prev.filter(id => !itemIds.includes(id))
+                            : [...new Set([...prev, ...itemIds])]);
+                          setSelectedSlot(null);
+                        }}
+                        className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                          {b.name}
+                          <Badge className="rounded-full text-[10px] bg-violet-100 text-violet-700 border-violet-200 border">Bundle</Badge>
+                          {!bundleCompatible && (
+                            <Badge className="rounded-full text-[10px] bg-slate-100 text-slate-500 border-slate-200 border capitalize">
+                              Not for {petSpecies || 'this pet'}
+                            </Badge>
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {(b.items || []).map(i => i.service_name).filter(Boolean).join(' + ')}
+                          {b.total_duration ? ` · ${b.total_duration} min` : ''}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold text-slate-700">{formatPrice(b.bundle_price, currency)}</span>
+                    </label>
+                  );
+                });
+
+                const serviceBlocks = allServices.map(svc => {
+                  const compatible = isCompatible(svc);
+                  const checked = selectedServices.includes(svc.id);
+                  return (
+                    <label
+                      key={svc.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-all ${
+                        !compatible
+                          ? 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'
+                          : checked
+                            ? 'border-amber-500 bg-amber-50 cursor-pointer'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 cursor-pointer'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!compatible}
+                        onChange={() => {
+                          setSelectedServices(prev =>
+                            checked ? prev.filter(id => id !== svc.id) : [...prev, svc.id]
+                          );
+                          setSelectedSlot(null);
+                        }}
+                        className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-900 flex items-center gap-2">
+                          {svc.name}
+                          {!compatible && (
+                            <Badge className="rounded-full text-[10px] bg-slate-100 text-slate-500 border-slate-200 border capitalize">
+                              Not for {petSpecies || 'this pet'}
+                            </Badge>
+                          )}
+                        </p>
+                        <p className="text-xs text-slate-500">{svc.duration_minutes} min</p>
+                      </div>
+                      <span className="text-sm font-semibold text-slate-700">{formatPrice(svc.price, currency)}</span>
+                    </label>
+                  );
+                });
+
+                return [...bundleBlocks, ...serviceBlocks];
+              })()}
               {allServices.length === 0 && (
                 <p className="text-sm text-slate-400 text-center py-6">No services configured. Add services in Settings.</p>
               )}
@@ -569,10 +648,15 @@ export default function NewGroomingAppointmentPage() {
               <Input
                 type="date"
                 value={selectedDate}
-                min={format(new Date(), 'yyyy-MM-dd')}
+                min={salonTodayISO(salonTz)}
                 onChange={e => { setSelectedDate(e.target.value); setSelectedSlot(null); }}
                 className="mt-1.5"
               />
+              {salonTz && (
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Salon local time: {salonNowTime(salonTz)} ({salonTz.split('/').pop().replace('_', ' ')})
+                </p>
+              )}
             </div>
 
             {/* Available slots */}
@@ -592,6 +676,12 @@ export default function NewGroomingAppointmentPage() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-slate-900">No slots available on this date</p>
+                      {selectedDate === salonTodayISO(salonTz) && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          It's already {salonNowTime(salonTz)} at the salon - only times later
+                          today can be offered. Try tomorrow for the full day.
+                        </p>
+                      )}
                       <p className="text-xs text-slate-500 mt-1">
                         Join the waitlist - we'll offer the slot the moment someone cancels.
                       </p>

@@ -54,6 +54,7 @@ export default function SettingsPage() {
   const [currency, setCurrency] = useState('AUD');
   const [hours, setHours] = useState(DEFAULT_HOURS);
   const [gstRegistered, setGstRegistered] = useState(false);
+  const [abnError, setAbnError] = useState(false);
   const [gstRate, setGstRate] = useState(10);
   const [savingGst, setSavingGst] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -107,6 +108,10 @@ export default function SettingsPage() {
           terms: rc.terms || '',
           social_handles: rc.social_handles || '',
           next_visit_message: rc.next_visit_message || '',
+          // ABN lives in receipt_config too. Omitting it here made the field
+          // look empty after every reload AND let the Receipt Template save
+          // (which writes this whole state back) silently wipe the stored ABN.
+          abn: rc.abn || '',
         });
         setCurrency(res.data.settings?.currency || 'AUD');
         setGstRegistered(res.data.settings?.gst_registered || false);
@@ -250,11 +255,15 @@ export default function SettingsPage() {
                     <Label>ABN <span className="text-red-500">*</span></Label>
                     <Input
                       value={receiptConfig.abn || ''}
-                      onChange={e => setReceiptConfig(c => ({ ...c, abn: e.target.value }))}
+                      onChange={e => { setReceiptConfig(c => ({ ...c, abn: e.target.value })); setAbnError(false); }}
                       placeholder="51 824 753 556"
-                      className="mt-1.5"
+                      className={`mt-1.5 ${abnError ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
                     />
-                    <p className="text-xs text-slate-400 mt-1">Australian Business Number - required for tax-compliant receipts and payslips.</p>
+                    {abnError ? (
+                      <p className="text-xs text-red-600 mt-1 font-medium">Enter your ABN before saving - the grey text above is only an example.</p>
+                    ) : (
+                      <p className="text-xs text-slate-400 mt-1">Australian Business Number - required for tax-compliant receipts and payslips.</p>
+                    )}
                   </div>
 
                   {/* GST toggle - controls only the tax rate, ABN stands alone */}
@@ -286,6 +295,7 @@ export default function SettingsPage() {
                     // Enforce ABN required - tax compliance is not optional
                     const abn = (receiptConfig.abn || '').trim();
                     if (!abn) {
+                      setAbnError(true);
                       toast.error('ABN is required. Enter your Australian Business Number to continue.');
                       return;
                     }

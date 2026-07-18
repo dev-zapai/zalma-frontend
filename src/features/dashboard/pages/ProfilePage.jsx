@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
 import { assetUrl } from '@/shared/lib/assets';
@@ -27,11 +27,26 @@ export default function ProfilePage() {
   const [form, setForm] = useState({});
   const [togglingStaff, setTogglingStaff] = useState(false);
 
+  // Local page data comes from /profile/me (record_id drives the
+  // "View staff profile" link). Reused after any change that affects it.
+  const loadProfile = useCallback(async () => {
+    try {
+      const res = await api.get('/profile/me');
+      setData(res.data);
+      setForm(res.data);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
   const handleToggleStaff = async (nextIsStaff) => {
     setTogglingStaff(true);
     try {
       await api.put('/profile/staff-status', { is_staff: nextIsStaff });
-      await fetchProfile();  // refresh flags (sidebar, gating) immediately
+      // Refresh BOTH profile sources: the AuthContext flags (sidebar,
+      // gating) and this page's own /profile/me data - record_id drives
+      // the "View staff profile" link, which must appear/disappear now,
+      // not after a manual page refresh.
+      await Promise.all([fetchProfile(), loadProfile()]);
       toast.success(nextIsStaff
         ? 'You now appear in the team roster and scheduling.'
         : 'Removed from the roster. Your history is preserved.');
@@ -41,17 +56,7 @@ export default function ProfilePage() {
     setTogglingStaff(false);
   };
 
-  useEffect(() => {
-    const fetch = async () => {
-      try {
-        const res = await api.get('/profile/me');
-        setData(res.data);
-        setForm(res.data);
-      } catch (e) { console.error(e); }
-      setLoading(false);
-    };
-    fetch();
-  }, []);
+  useEffect(() => { loadProfile(); }, [loadProfile]);
 
   const handleSave = async () => {
     setSaving(true);

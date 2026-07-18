@@ -21,6 +21,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { toast } from 'sonner';
 import { formatPrice } from '@/shared/lib/currency';
 import { listItems } from '@/shared/lib/listResponse';
 
@@ -83,12 +84,30 @@ export default function ClientDetailPage() {
   useEffect(() => { fetchFinancials(); }, [fetchFinancials]);
 
   const handleAddPet = async () => {
+    if (!petForm.name) {
+      toast.error('Pet name is required');
+      return;
+    }
     try {
-      await api.post('/pets', { ...petForm, owner_id: clientId });
+      // Drop empty fields - the API rejects '' for typed fields like
+      // weight (float) and date_of_birth (date). The schema field for
+      // notes is `notes`, not `special_notes`.
+      const payload = { owner_id: clientId };
+      Object.entries(petForm).forEach(([k, v]) => {
+        if (v === '' || v == null) return;
+        payload[k === 'special_notes' ? 'notes' : k] = v;
+      });
+      if (payload.weight) payload.weight = parseFloat(payload.weight);
+      await api.post('/pets', payload);
+      toast.success(`${petForm.name} added`);
       setPetDialogOpen(false);
       setPetForm({ name: '', species: '', breed: '', gender: '', date_of_birth: '', weight: '', color: '', special_notes: '' });
       fetchData();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      const detail = e?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Failed to add pet');
+    }
   };
 
   const handleLogCommunication = async () => {
@@ -664,7 +683,7 @@ export default function ClientDetailPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPetDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddPet} disabled={!petForm.name} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            <Button onClick={handleAddPet} className="bg-primary hover:bg-primary/90 text-primary-foreground">
               Add Pet
             </Button>
           </DialogFooter>

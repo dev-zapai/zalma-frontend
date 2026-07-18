@@ -21,6 +21,7 @@ import TransferToPartnerDialog from '@/shared/components/TransferToPartnerDialog
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { formatPrice, getCurrencySymbol } from '@/shared/lib/currency';
+import { formatInSalonTz, salonTime } from '@/shared/lib/salonTime';
 import DownloadReceipt from '@/shared/components/DownloadReceipt';
 import { listItems } from '@/shared/lib/listResponse';
 
@@ -654,7 +655,7 @@ export default function GroomingAppointmentDetailPage() {
             )}
           </div>
           <p className="text-sm text-slate-500 mt-0.5">
-            {appt.start_time ? format(parseISO(appt.start_time), 'EEEE, MMMM d, yyyy · h:mm a') : ''}
+            {appt.start_time ? formatInSalonTz(appt.start_time, tenant?.timezone, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
           </p>
         </div>
         {/* Action buttons */}
@@ -734,7 +735,7 @@ export default function GroomingAppointmentDetailPage() {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
           <Clock className="h-4 w-4 mt-0.5 shrink-0" />
           <div>
-            <p className="font-medium">Check-in opens at {format(new Date(parseISO(appt.start_time).getTime() - 15 * 60 * 1000), 'h:mm a')} (15 minutes before the slot)</p>
+            <p className="font-medium">Check-in opens at {salonTime(new Date(new Date(appt.start_time).getTime() - 15 * 60 * 1000), tenant?.timezone)} (15 minutes before the slot)</p>
             <p className="text-xs mt-0.5">
               Check-in will unlock automatically 15 minutes before the appointment.
             </p>
@@ -774,8 +775,8 @@ export default function GroomingAppointmentDetailPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1.5 text-sm">
-            <p><span className="text-slate-400">Date:</span> {appt.start_time ? format(parseISO(appt.start_time), 'MMM d, yyyy') : '-'}</p>
-            <p><span className="text-slate-400">Time:</span> {appt.start_time ? format(parseISO(appt.start_time), 'h:mm a') : '-'} – {appt.end_time ? format(parseISO(appt.end_time), 'h:mm a') : ''}</p>
+            <p><span className="text-slate-400">Date:</span> {appt.start_time ? formatInSalonTz(appt.start_time, tenant?.timezone, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</p>
+            <p><span className="text-slate-400">Time:</span> {appt.start_time ? salonTime(appt.start_time, tenant?.timezone) : '-'} - {appt.end_time ? salonTime(appt.end_time, tenant?.timezone) : ''}</p>
             <div className="flex items-center gap-2">
               <span className="text-slate-400">Groomer:</span>
               {changingGroomer ? (
