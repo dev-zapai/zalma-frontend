@@ -188,8 +188,8 @@ export default function AvailabilityPage() {
     //   * :30 mark   → 1px slate-100 whisper at mid-row
     const gridBackground = {
       backgroundImage: [
-        'linear-gradient(to bottom, rgb(226 232 240) 1px, transparent 1px)',
-        'linear-gradient(to bottom, transparent calc(50% - 1px), rgb(241 245 249) calc(50% - 1px), rgb(241 245 249) 50%, transparent 50%)',
+        'linear-gradient(to bottom, var(--cal-line-hour) 1px, transparent 1px)',
+        'linear-gradient(to bottom, transparent calc(50% - 1px), var(--cal-line-half) calc(50% - 1px), var(--cal-line-half) 50%, transparent 50%)',
       ].join(', '),
       backgroundSize: `100% ${ROW_HEIGHT}px, 100% ${ROW_HEIGHT}px`,
       backgroundRepeat: 'repeat-y',
@@ -205,9 +205,9 @@ export default function AvailabilityPage() {
         className={`relative group transition-colors ${isOff ? 'cursor-default' : 'cursor-pointer hover:bg-primary/[0.03]'} ${isToday && !isOff ? 'bg-primary/[0.02]' : ''}`}
         style={{
           height: `${(hourEnd - hourStart) * ROW_HEIGHT}px`,
-          borderLeft: '1px solid rgb(226 232 240)', // slate-200 - quiet column separator
+          borderLeft: '1px solid var(--cal-line-hour)', // theme-aware quiet column separator
           ...(isOff
-            ? { backgroundImage: OFF_HATCH, backgroundColor: 'rgba(248,250,252,0.7)' }
+            ? { backgroundImage: OFF_HATCH, backgroundColor: 'var(--cal-off-bg, rgba(248,250,252,0.7))' }
             : gridBackground),
         }}
         onClick={() => {

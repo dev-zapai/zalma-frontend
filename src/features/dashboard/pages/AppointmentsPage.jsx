@@ -8,7 +8,7 @@ import { Badge } from '@/shared/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Search, ChevronLeft, ChevronRight, Plus, CalendarCheck } from 'lucide-react';
-import { salonDateTime } from '@/shared/lib/salonTime';
+import { salonDateTime, salonTodayISO } from '@/shared/lib/salonTime';
 import { listItems } from '@/shared/lib/listResponse';
 import { formatPrice } from '@/shared/lib/currency';
 
@@ -68,20 +68,29 @@ export default function AppointmentsPage() {
       .catch(() => {});
   }, []);
 
+  // The date filter defaults to TODAY (salon timezone). No `date` param or
+  // the legacy `date=today` deep-link both mean salon-today; `date=all`
+  // (set when the user clears the input) shows the full history.
+  const effectiveDate =
+    dateFilter === 'all' ? ''
+      : (dateFilter && dateFilter !== 'today') ? dateFilter
+      : salonTodayISO(salonTz);
+
+  // Time sort: user-selectable; defaults to chronological for a day view
+  // and latest-first when browsing all dates.
+  const sortDir = searchParams.get('sort') || (dateFilter === 'all' ? 'desc' : 'asc');
+
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
     try {
       const params = { page, limit: pageSize };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (staffFilter !== 'all') params.staff_id = staffFilter;
-      if (dateFilter && dateFilter !== 'today') {
-        params.date_from = dateFilter;
-        params.date_to = dateFilter;
-      } else if (dateFilter === 'today') {
-        const today = new Date().toISOString().split('T')[0];
-        params.date_from = today;
-        params.date_to = today;
+      if (effectiveDate) {
+        params.date_from = effectiveDate;
+        params.date_to = effectiveDate;
       }
+      params.sort = sortDir;
       const res = await api.get('/g/appointments', { params });
       setAppointments(res.data.items || []);
       setTotal(res.data.total || 0);
@@ -92,7 +101,7 @@ export default function AppointmentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter, staffFilter, dateFilter]);
+  }, [page, pageSize, statusFilter, staffFilter, effectiveDate, sortDir]);
 
   useEffect(() => {
     fetchAppointments();
@@ -134,9 +143,11 @@ export default function AppointmentsPage() {
       {/* Filters */}
       <Card className="rounded-xl border-slate-200/60">
         <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              {/* top-3 anchors to the input's own height so the icon stays
+                  centered even if a sibling grid cell grows taller */}
+              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
               <Input
                 placeholder="Search pet, client, service..."
                 className="pl-9"
@@ -145,6 +156,13 @@ export default function AppointmentsPage() {
                 data-testid="search-input"
               />
             </div>
+            <Select value={sortDir} onValueChange={v => updateParam('sort', v)}>
+              <SelectTrigger data-testid="sort-filter"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asc">Time: earliest first</SelectItem>
+                <SelectItem value="desc">Time: latest first</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={statusFilter} onValueChange={v => updateParam('status', v)}>
               <SelectTrigger data-testid="status-filter"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -164,8 +182,16 @@ export default function AppointmentsPage() {
             </Select>
             <Input
               type="date"
-              value={dateFilter === 'today' ? new Date().toISOString().split('T')[0] : dateFilter}
-              onChange={e => updateParam('date', e.target.value)}
+              value={effectiveDate}
+              onChange={e => {
+                const next = new URLSearchParams(searchParams);
+                // Clearing the input means "show all dates", which must be
+                // an explicit state or the today-default would reassert.
+                if (e.target.value) next.set('date', e.target.value);
+                else next.set('date', 'all');
+                setSearchParams(next);
+                setPage(1);
+              }}
               data-testid="date-filter"
             />
           </div>

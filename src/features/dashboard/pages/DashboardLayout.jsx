@@ -4,6 +4,8 @@ import { useAuth } from '@/features/auth/AuthContext';
 import api from '@/shared/lib/api';
 import { assetUrl } from '@/shared/lib/assets';
 import { applyThemeColor } from '@/shared/lib/theme';
+import { getStoredTheme, applyTheme, clearThemeClass } from '@/shared/lib/darkMode';
+import ThemeToggle from '@/shared/components/ThemeToggle';
 
 import {
   LayoutDashboard, Calendar, CalendarCheck, UserCog, Scissors, BarChart3, Bell,
@@ -52,6 +54,14 @@ export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifBadge, setNotifBadge] = useState(0);
   const [partnerBadge, setPartnerBadge] = useState(0);
+
+  // Dark mode: apply the stored preference while inside the dashboard and
+  // drop the class on unmount so the public salon site and auth pages stay
+  // light regardless of the admin's preference.
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+    return () => clearThemeClass();
+  }, []);
 
   // Poll action-items count for bell badge
   useEffect(() => {
@@ -375,6 +385,7 @@ export default function DashboardLayout() {
               <Menu className="h-5 w-5 text-slate-600" />
             </button>
             <div className="flex-1" />
+            <ThemeToggle />
             <div className="text-sm text-slate-500 capitalize">
               {profile?.is_owner ? 'Owner' : isAdmin ? 'Admin' : profile?.role}
             </div>

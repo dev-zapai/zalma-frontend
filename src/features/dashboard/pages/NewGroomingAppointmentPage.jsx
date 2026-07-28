@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/shared/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { formatPrice } from '@/shared/lib/currency';
 import { salonTodayISO, salonNowTime } from '@/shared/lib/salonTime';
+import { computeBundlePricing, recommendBundles } from '@/shared/lib/bundlePricing';
 
 const SPECIES_OPTIONS = [
   { value: 'dog', label: 'Dog' },
@@ -59,6 +60,9 @@ export default function NewGroomingAppointmentPage() {
   const [slots, setSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  // Next-available suggestion when the chosen date has nothing free
+  const [nextAvail, setNextAvail] = useState(null);
+  const [pendingSlotTime, setPendingSlotTime] = useState(null);
 
   // Notes & booking
   const [bookNotes, setBookNotes] = useState('');
@@ -148,10 +152,23 @@ export default function NewGroomingAppointmentPage() {
     return sum + (s?.duration_minutes || 30);
   }, 0) || 30;
 
-  const totalPrice = selectedServices.reduce((sum, id) => {
-    const s = allServices.find(sv => sv.id === id);
-    return sum + (parseFloat(s?.price) || 0);
-  }, 0);
+  // Bundle-aware pricing: when the selection covers a bundle's services the
+  // bundle price applies (mirrors the server, which recomputes and stores
+  // authoritative prices on multi-book).
+  const priceByService = useMemo(() => {
+    const m = {};
+    allServices.forEach(s => { m[s.id] = parseFloat(s.price) || 0; });
+    return m;
+  }, [allServices]);
+  const pricing = useMemo(
+    () => computeBundlePricing(selectedServices, priceByService, bundles),
+    [selectedServices, priceByService, bundles]
+  );
+  const totalPrice = pricing.total;
+  const bundleRecommendations = useMemo(
+    () => recommendBundles(selectedServices, priceByService, bundles),
+    [selectedServices, priceByService, bundles]
+  );
 
   // ── Fetch multi-service slots when date changes ──
   // Each slot returned from /multi-auto-slots includes a per-service
@@ -179,6 +196,28 @@ export default function NewGroomingAppointmentPage() {
     })
       .finally(() => setLoadingSlots(false));
   }, [selectedDate, selectedServices]);
+
+  // When the chosen date has nothing free, look ahead for the first
+  // bookable slot so the admin gets an answer instead of a dead end.
+  useEffect(() => {
+    setNextAvail(null);
+    if (!selectedDate || selectedServices.length === 0 || loadingSlots) return;
+    if (slots.some(s => s.available)) return;
+    let cancelled = false;
+    api.get('/g/appointments/next-available', {
+      params: { service_ids: selectedServices.join(','), from_date: selectedDate },
+    }).then(res => { if (!cancelled && res.data?.found) setNextAvail(res.data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [slots, loadingSlots, selectedDate, selectedServices]);
+
+  // After jumping to the suggested date, auto-select the suggested slot
+  useEffect(() => {
+    if (!pendingSlotTime || loadingSlots) return;
+    const match = slots.find(s => s.available && s.start_time === pendingSlotTime);
+    if (match) setSelectedSlot(match);
+    setPendingSlotTime(null);
+  }, [slots, loadingSlots, pendingSlotTime]);
 
   // ── Add new pet for existing client ──
   const handleAddNewPet = async () => {
@@ -601,12 +640,54 @@ export default function NewGroomingAppointmentPage() {
               )}
             </div>
 
+            {bundleRecommendations.length > 0 && (
+              <div className="border border-violet-200 bg-violet-50 rounded-lg p-3 space-y-2">
+                <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">Recommended bundle</p>
+                {bundleRecommendations.slice(0, 2).map(rec => (
+                  <div key={rec.bundle.id} className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{rec.bundle.name}</p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {(rec.bundle.items || []).map(i => i.service_name).filter(Boolean).join(' + ')}
+                        {' '}· {formatPrice(rec.bundle.bundle_price, currency)} · saves {formatPrice(rec.savings, currency)}
+                      </p>
+                    </div>
+                    <Button
+                      type="button" size="sm" variant="outline"
+                      className="shrink-0 border-violet-300 text-violet-700 hover:bg-violet-100"
+                      onClick={() => {
+                        // Selecting the bundle completes its service set; the
+                        // bundle price then applies automatically, replacing
+                        // the individual line prices.
+                        setSelectedServices(prev => [...new Set([...prev, ...rec.itemIds])]);
+                        setSelectedSlot(null);
+                      }}
+                    >
+                      Select bundle
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {selectedServices.length > 0 && (
-              <div className="bg-amber-50 rounded-lg p-3 flex justify-between items-center">
-                <span className="text-sm text-amber-800">
-                  {selectedServices.length} service{selectedServices.length > 1 ? 's' : ''} · {totalDuration} min
-                </span>
-                <span className="text-sm font-bold text-amber-800">{formatPrice(totalPrice, currency)}</span>
+              <div className="bg-amber-50 rounded-lg p-3 space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-amber-800">
+                    {selectedServices.length} service{selectedServices.length > 1 ? 's' : ''} · {totalDuration} min
+                  </span>
+                  <span className="text-sm font-bold text-amber-800">
+                    {pricing.savings > 0 && (
+                      <span className="line-through opacity-60 mr-2 font-normal">{formatPrice(pricing.undiscountedTotal, currency)}</span>
+                    )}
+                    {formatPrice(totalPrice, currency)}
+                  </span>
+                </div>
+                {pricing.appliedBundles.map(b => (
+                  <p key={b.bundleId} className="text-xs text-emerald-700 font-medium">
+                    Bundle applied: {b.name} - saves {formatPrice(b.savings, currency)}
+                  </p>
+                ))}
               </div>
             )}
 
@@ -686,6 +767,24 @@ export default function NewGroomingAppointmentPage() {
                         Join the waitlist - we'll offer the slot the moment someone cancels.
                       </p>
                     </div>
+                    {nextAvail && (
+                      <div className="bg-white border border-emerald-200 rounded-lg p-3 text-left flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide">Next available</p>
+                          <p className="text-sm font-medium text-slate-900">
+                            {format(new Date(nextAvail.date + 'T00:00:00'), 'EEE, d MMM')} at {nextAvail.start_time}
+                          </p>
+                        </div>
+                        <Button
+                          type="button" size="sm"
+                          data-testid="use-next-available"
+                          onClick={() => { setPendingSlotTime(nextAvail.start_time); setSelectedDate(nextAvail.date); }}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                        >
+                          Use this slot
+                        </Button>
+                      </div>
+                    )}
                     <Button
                       size="sm"
                       onClick={() => setWaitlistOpen(true)}
