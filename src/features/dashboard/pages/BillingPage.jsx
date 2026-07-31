@@ -20,6 +20,7 @@ import {
 import AddCardModal from '@/features/billing/components/AddCardModal';
 import { useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
+import DatePicker from '@/shared/components/DatePicker';
 
 const PLAN_COLORS = { growth: 'bg-slate-100 text-slate-700', premium: 'bg-blue-100 text-blue-700', ultimate: 'bg-violet-100 text-violet-700' };
 const PLAN_ORDER = ['growth', 'premium', 'ultimate'];
@@ -327,10 +328,10 @@ export default function BillingPage() {
               {activeTab !== 'invoices' && (
                 <>
                   <div className="w-px h-5 bg-slate-200" />
-                  <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); if (dateTo && e.target.value > dateTo) setDateTo(e.target.value); }}
+                  <DatePicker value={dateFrom} onChange={v => { setDateFrom(v); if (dateTo && v > dateTo) setDateTo(v); }}
                     className={`h-8 px-2 text-xs rounded-lg border ${dateFrom ? 'border-primary bg-primary/5' : 'border-slate-200'} text-slate-700 focus:outline-none focus:border-primary`} />
                   <span className="text-xs text-slate-400">to</span>
-                  <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); if (dateFrom && e.target.value < dateFrom) setDateFrom(e.target.value); }}
+                  <DatePicker value={dateTo} onChange={v => { setDateTo(v); if (dateFrom && v < dateFrom) setDateFrom(v); }}
                     className={`h-8 px-2 text-xs rounded-lg border ${dateTo ? 'border-primary bg-primary/5' : 'border-slate-200'} text-slate-700 focus:outline-none focus:border-primary`} />
                   {dateFrom && <button onClick={() => { setDateFrom(''); setDateTo(''); }} className="text-xs text-slate-400 hover:text-slate-600">Clear</button>}
                 </>

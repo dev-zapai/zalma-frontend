@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import DatePicker from '@/shared/components/DatePicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
 import { TrendingUp, DollarSign, Users, Scissors, Clock, Activity, PawPrint, CalendarCheck, XCircle, UserX } from 'lucide-react';
@@ -88,26 +89,25 @@ export default function AnalyticsPage() {
               fills in the missing side). */}
           <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
             <span className="text-[10px] text-slate-400 uppercase tracking-wide">Custom</span>
-            <input
-              type="date"
+            <DatePicker
               value={customRange?.from || ''}
-              onChange={(e) => {
-                const from = e.target.value;
+              onChange={(from) => {
                 if (!from) { setCustomRange(null); return; }
                 setCustomRange(prev => ({ from, to: prev?.to || from }));
               }}
-              className={`h-8 px-2 text-xs rounded-lg border transition-colors ${customRange ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white'} text-slate-700 focus:outline-none focus:border-primary`}
+              placeholder="From"
+              className={`h-8 w-[130px] text-xs ${customRange ? 'border-primary bg-primary/5' : ''}`}
             />
             <span className="text-xs text-slate-400">{'→'}</span>
-            <input
-              type="date"
+            <DatePicker
               value={customRange?.to || ''}
-              onChange={(e) => {
-                const to = e.target.value;
+              onChange={(to) => {
                 if (!to) { setCustomRange(null); return; }
                 setCustomRange(prev => ({ from: prev?.from || to, to }));
               }}
-              className={`h-8 px-2 text-xs rounded-lg border transition-colors ${customRange ? 'border-primary bg-primary/5' : 'border-slate-200 bg-white'} text-slate-700 focus:outline-none focus:border-primary`}
+              placeholder="To"
+              min={customRange?.from}
+              className={`h-8 w-[130px] text-xs ${customRange ? 'border-primary bg-primary/5' : ''}`}
             />
             {customRange && (
               <button

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import DatePicker from '@/shared/components/DatePicker';
 import { Card, CardContent } from '@/shared/components/ui/card';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -180,18 +181,18 @@ export default function AppointmentsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Input
-              type="date"
+            <DatePicker
               value={effectiveDate}
-              onChange={e => {
+              onChange={v => {
                 const next = new URLSearchParams(searchParams);
-                // Clearing the input means "show all dates", which must be
-                // an explicit state or the today-default would reassert.
-                if (e.target.value) next.set('date', e.target.value);
+                // Clearing means "show all dates", which must be an explicit
+                // state or the today-default would reassert.
+                if (v) next.set('date', v);
                 else next.set('date', 'all');
                 setSearchParams(next);
                 setPage(1);
               }}
+              placeholder="All dates"
               data-testid="date-filter"
             />
           </div>

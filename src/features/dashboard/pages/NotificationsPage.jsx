@@ -11,7 +11,7 @@ import { Switch } from '@/shared/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/components/ui/tabs';
 import {
-  Bell, Check, CheckCheck, Clock, AlertTriangle, XCircle, Timer,
+  Bell, Check, CheckCheck, CheckCircle2, Clock, AlertTriangle, XCircle, Timer,
   FileText, DollarSign, UserCog, Mail, Shield, Cpu, UserPlus,
   Sparkles, Heart, AlertCircle, Ban, Phone, ChevronRight,
   MessageSquare, Send, Zap, RefreshCw, X,
@@ -255,6 +255,23 @@ function ActionRequiredTab() {
     return () => clearInterval(interval);
   }, [fetchItems]);
 
+  // "Mark as done": day-scoped server-side dismissal - the item disappears
+  // for today and honestly resurfaces tomorrow if its cause still exists.
+  const handleMarkDone = async (item) => {
+    try {
+      await api.post('/g/notifications/action-items/dismiss', { item_id: item.id });
+      setItems(prev => prev.filter(i => i.id !== item.id));
+      setSummary(prev => ({
+        ...prev,
+        total: Math.max(0, (prev.total || 0) - 1),
+        [item.priority]: Math.max(0, (prev[item.priority] || 0) - 1),
+      }));
+      toast.success('Marked as done');
+    } catch {
+      toast.error('Failed to mark as done');
+    }
+  };
+
   const handleAction = async (item, action) => {
     try {
       if (action === 'confirm') {
@@ -356,6 +373,16 @@ function ActionRequiredTab() {
                 </Button>
               );
             })}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs px-2 text-slate-400 hover:text-emerald-600"
+              title="Mark as done - hides this item for today"
+              data-testid={`done-${item.id}`}
+              onClick={() => handleMarkDone(item)}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Done
+            </Button>
           </div>
         </div>
       </div>

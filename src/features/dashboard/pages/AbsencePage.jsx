@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isSameDay } from 'date-fns';
 import { toast } from 'sonner';
+import DatePicker from '@/shared/components/DatePicker';
 
 const LEAVE_TYPES = [
   { value: 'sick',           label: 'Sick Leave' },
@@ -415,14 +416,14 @@ export default function AbsencePage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Start Date *</Label>
-                <Input type="date" value={form.start_date} min={format(new Date(), 'yyyy-MM-dd')}
-                  onChange={e => setForm(f => ({ ...f, start_date: e.target.value, end_date: !f.end_date || f.end_date < e.target.value ? e.target.value : f.end_date }))}
+                <DatePicker value={form.start_date} min={format(new Date(), 'yyyy-MM-dd')}
+                  onChange={v => setForm(f => ({ ...f, start_date: v, end_date: !f.end_date || f.end_date < v ? v : f.end_date }))}
                   className="mt-1.5" />
               </div>
               <div>
                 <Label>End Date *</Label>
-                <Input type="date" value={form.end_date} min={form.start_date || format(new Date(), 'yyyy-MM-dd')}
-                  onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))}
+                <DatePicker value={form.end_date} min={form.start_date || format(new Date(), 'yyyy-MM-dd')}
+                  onChange={v => setForm(f => ({ ...f, end_date: v }))}
                   className="mt-1.5" />
               </div>
             </div>

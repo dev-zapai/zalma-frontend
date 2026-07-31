@@ -20,6 +20,7 @@ import {
 import TransferToPartnerDialog from '@/shared/components/TransferToPartnerDialog';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
+import DatePicker from '@/shared/components/DatePicker';
 import { formatPrice, getCurrencySymbol } from '@/shared/lib/currency';
 import { formatInSalonTz, salonTime } from '@/shared/lib/salonTime';
 import DownloadReceipt from '@/shared/components/DownloadReceipt';
@@ -100,8 +101,6 @@ export default function GroomingAppointmentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('services');
   const [statusUpdating, setStatusUpdating] = useState(false);
-  const [changingGroomer, setChangingGroomer] = useState(false);
-  const [newStaffId, setNewStaffId] = useState('');
 
   // Previous grooming context (last note + last feedback for this pet)
   const [prevGroomingNote, setPrevGroomingNote] = useState(null);
@@ -422,10 +421,38 @@ export default function GroomingAppointmentDetailPage() {
   const [addStaffId, setAddStaffId] = useState('');
   const [addQty, setAddQty] = useState(1);
 
-  // Default addStaffId to the appointment's primary staff when loaded
+  // Ranked groomer options per service: capable staff tagged with real-time
+  // availability for THIS appointment's window (same-groomer first, free
+  // capable next, busy ones selectable but flagged).
+  const [staffOptions, setStaffOptions] = useState({});
+  const loadStaffOptions = useCallback(async (serviceId) => {
+    if (!serviceId) return;
+    setStaffOptions(prev => (prev[serviceId] ? prev : { ...prev, [serviceId]: null }));
+    try {
+      const res = await api.get(`/g/appointments/${appointmentId}/staff-options`, {
+        params: { service_id: serviceId },
+      });
+      setStaffOptions(prev => ({ ...prev, [serviceId]: res.data.options || [] }));
+    } catch {
+      setStaffOptions(prev => ({ ...prev, [serviceId]: undefined }));
+    }
+  }, [appointmentId]);
+
+  // Prefetch options for the services already on the appointment (row dropdowns)
   useEffect(() => {
-    if (appt?.staff_id && !addStaffId) setAddStaffId(appt.staff_id);
-  }, [appt?.staff_id]); // eslint-disable-line react-hooks/exhaustive-deps
+    [...new Set(apptServices.map(i => i.service_id).filter(Boolean))]
+      .forEach(sid => { if (staffOptions[sid] === undefined) loadStaffOptions(sid); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apptServices]);
+
+  const staffOptionLabel = (o) => (
+    <span className="flex items-center gap-2">
+      {o.full_name}
+      {o.assigned_here && <span className="text-[10px] font-medium text-emerald-600">on this appointment</span>}
+      {o.busy && <span className="text-[10px] font-medium text-amber-600">busy at this time</span>}
+      {!o.on_shift && <span className="text-[10px] text-slate-400">off shift</span>}
+    </span>
+  );
 
   const handleAddService = async () => {
     if (!addServiceId) return;
@@ -434,7 +461,7 @@ export default function GroomingAppointmentDetailPage() {
     try {
       const item = {
         service_id: svc.id,
-        staff_id: addStaffId || appt?.staff_id || null,
+        staff_id: addStaffId || null,
         name: svc.name,
         duration_minutes: svc.duration_minutes,
         unit_price: parseFloat(svc.price),
@@ -444,7 +471,10 @@ export default function GroomingAppointmentDetailPage() {
       const res = await api.post(`/g/appointments/${appointmentId}/services`, item);
       setApptServices(prev => [...prev, res.data]);
       setAddServiceId('');
+      setAddStaffId('');
       setAddQty(1);
+      // The appointment window auto-extended server-side - refresh header times
+      api.get(`/g/appointments/${appointmentId}`).then(r => setAppt(r.data)).catch(() => {});
       toast.success('Service added');
     } catch (e) { toast.error('Failed to add service'); }
   };
@@ -478,6 +508,7 @@ export default function GroomingAppointmentDetailPage() {
   };
 
   const handleDeletePhoto = async (photoId) => {
+    if (!window.confirm('Remove this photo? This cannot be undone.')) return;
     try {
       await api.delete(`/g/appointments/${appointmentId}/photos/${photoId}`);
       setPhotos(prev => prev.filter(p => p.id !== photoId));
@@ -578,18 +609,6 @@ export default function GroomingAppointmentDetailPage() {
       toast.error(e.response?.data?.detail || 'Failed to reschedule');
     }
     setRescheduling(false);
-  };
-
-  // ─── Change groomer ────────────────────────────────────────────────────────
-  const handleChangeGroomer = async () => {
-    if (!newStaffId) return;
-    try {
-      const res = await api.put(`/g/appointments/${appointmentId}`, { staff_id: newStaffId });
-      setAppt(res.data);
-      setChangingGroomer(false);
-      setNewStaffId('');
-      toast.success('Groomer updated');
-    } catch (e) { toast.error('Failed to update groomer'); }
   };
 
   // ─── Save feedback ─────────────────────────────────────────────────────────
@@ -777,32 +796,6 @@ export default function GroomingAppointmentDetailPage() {
           <CardContent className="space-y-1.5 text-sm">
             <p><span className="text-slate-400">Date:</span> {appt.start_time ? formatInSalonTz(appt.start_time, tenant?.timezone, { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</p>
             <p><span className="text-slate-400">Time:</span> {appt.start_time ? salonTime(appt.start_time, tenant?.timezone) : '-'} - {appt.end_time ? salonTime(appt.end_time, tenant?.timezone) : ''}</p>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400">Groomer:</span>
-              {changingGroomer ? (
-                <div className="flex items-center gap-1.5 flex-1">
-                  <Select value={newStaffId} onValueChange={setNewStaffId}>
-                    <SelectTrigger className="h-7 text-xs flex-1">
-                      <SelectValue placeholder="Select groomer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {staffList.map(s => (
-                        <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <button onClick={handleChangeGroomer} className="text-xs text-primary hover:underline">Save</button>
-                  <button onClick={() => { setChangingGroomer(false); setNewStaffId(''); }} className="text-xs text-slate-400 hover:underline">Cancel</button>
-                </div>
-              ) : (
-                <>
-                  <span>{appt.staff?.full_name || '-'}</span>
-                  {!receipt && (
-                    <button onClick={() => { setChangingGroomer(true); setNewStaffId(appt.staff_id || ''); }} className="text-xs text-primary hover:underline">Change</button>
-                  )}
-                </>
-              )}
-            </div>
             {appt.notes && <p className="text-slate-400 text-xs italic mt-2">{appt.notes}</p>}
           </CardContent>
         </Card>
@@ -1032,13 +1025,26 @@ export default function GroomingAppointmentDetailPage() {
                               <SelectValue placeholder="Assign staff" />
                             </SelectTrigger>
                             <SelectContent>
-                              {eligible.length === 0 ? (
-                                <div className="text-xs text-amber-600 px-3 py-2">
-                                  No groomer can perform this service
-                                </div>
-                              ) : eligible.map(s => (
-                                <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>
-                              ))}
+                              {(() => {
+                                const opts = staffOptions[item.service_id];
+                                if (Array.isArray(opts) && opts.length > 0) {
+                                  return opts.map(o => (
+                                    <SelectItem key={o.staff_id} value={o.staff_id}>
+                                      {staffOptionLabel(o)}
+                                    </SelectItem>
+                                  ));
+                                }
+                                if (eligible.length === 0) {
+                                  return (
+                                    <div className="text-xs text-amber-600 px-3 py-2">
+                                      No groomer can perform this service
+                                    </div>
+                                  );
+                                }
+                                return eligible.map(s => (
+                                  <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>
+                                ));
+                              })()}
                             </SelectContent>
                           </Select>
                         )}
@@ -1102,7 +1108,14 @@ export default function GroomingAppointmentDetailPage() {
                 <div className="flex gap-3 flex-wrap items-end">
                   <div className="flex-1 min-w-[200px]">
                     <Label className="text-xs text-slate-500 mb-1">Service</Label>
-                    <Select value={addServiceId} onValueChange={setAddServiceId}>
+                    <Select
+                      value={addServiceId}
+                      onValueChange={(v) => {
+                        setAddServiceId(v);
+                        setAddStaffId('');
+                        loadStaffOptions(v);
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a service..." />
                       </SelectTrigger>
@@ -1115,15 +1128,23 @@ export default function GroomingAppointmentDetailPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="min-w-[160px]">
-                    <Label className="text-xs text-slate-500 mb-1">Staff</Label>
-                    <Select value={addStaffId} onValueChange={setAddStaffId}>
+                  <div className="min-w-[220px]">
+                    <Label className="text-xs text-slate-500 mb-1">Groomer</Label>
+                    <Select value={addStaffId} onValueChange={setAddStaffId} disabled={!addServiceId}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Assign staff" />
+                        <SelectValue placeholder={addServiceId ? 'Select groomer' : 'Pick a service first'} />
                       </SelectTrigger>
                       <SelectContent>
-                        {staffList.filter(s => s.is_active !== false).map(s => (
-                          <SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>
+                        {staffOptions[addServiceId] === null && (
+                          <div className="text-xs text-slate-400 px-3 py-2">Checking availability...</div>
+                        )}
+                        {Array.isArray(staffOptions[addServiceId]) && staffOptions[addServiceId].length === 0 && (
+                          <div className="text-xs text-amber-600 px-3 py-2">No groomer can perform this service</div>
+                        )}
+                        {(staffOptions[addServiceId] || []).map(o => (
+                          <SelectItem key={o.staff_id} value={o.staff_id}>
+                            {staffOptionLabel(o)}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1136,7 +1157,7 @@ export default function GroomingAppointmentDetailPage() {
                       className="w-16"
                     />
                   </div>
-                  <Button onClick={handleAddService} disabled={!addServiceId} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                  <Button onClick={handleAddService} disabled={!addServiceId || !addStaffId} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                     <Plus className="h-4 w-4 mr-1" /> Add
                   </Button>
                 </div>
@@ -1194,10 +1215,13 @@ export default function GroomingAppointmentDetailPage() {
                             className="w-full h-full object-cover rounded-lg border"
                           />
                           <button
+                            type="button"
                             onClick={() => handleDeletePhoto(photo.id)}
-                            className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Remove photo"
+                            aria-label="Remove photo"
+                            className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                           >
-                            <Trash2 className="h-3 w-3" />
+                            <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       ))}
@@ -1257,10 +1281,9 @@ export default function GroomingAppointmentDetailPage() {
               </div>
               <div>
                 <Label>Next Recommended Visit</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   value={noteForm.next_recommended_date}
-                  onChange={e => setNoteForm({ ...noteForm, next_recommended_date: e.target.value })}
+                  onChange={v => setNoteForm({ ...noteForm, next_recommended_date: v })}
                   className="mt-1.5"
                 />
               </div>
@@ -1654,11 +1677,10 @@ export default function GroomingAppointmentDetailPage() {
           <div className="space-y-4 py-2">
             <div>
               <Label>New Date *</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={rescheduleDate}
                 min={format(new Date(), 'yyyy-MM-dd')}
-                onChange={e => setRescheduleDate(e.target.value)}
+                onChange={v => setRescheduleDate(v)}
                 className="mt-1.5"
               />
             </div>
@@ -1880,10 +1902,9 @@ export default function GroomingAppointmentDetailPage() {
           </p>
           <div className="mt-3">
             <Label>Rebooking Date</Label>
-            <Input
-              type="date"
+            <DatePicker
               value={rebookingDate}
-              onChange={e => setRebookingDate(e.target.value)}
+              onChange={v => setRebookingDate(v)}
               className="mt-1.5"
             />
           </div>

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
+import DatePicker from '@/shared/components/DatePicker';
 import { formatPrice } from '@/shared/lib/currency';
 import { listItems } from '@/shared/lib/listResponse';
 
@@ -663,7 +664,7 @@ export default function ClientDetailPage() {
               </div>
               <div>
                 <Label>Date of Birth</Label>
-                <Input type="date" value={petForm.date_of_birth} onChange={e => setPetForm({ ...petForm, date_of_birth: e.target.value })} className="mt-1.5" />
+                <DatePicker value={petForm.date_of_birth} onChange={v => setPetForm({ ...petForm, date_of_birth: v })} className="mt-1.5" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -777,7 +778,7 @@ export default function ClientDetailPage() {
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Rebooking</h3>
               <div>
                 <Label>Rebooking Due Date</Label>
-                <Input type="date" value={editForm.rebooking_due_date || ''} onChange={e => setEditForm({ ...editForm, rebooking_due_date: e.target.value })} className="mt-1.5" />
+                <DatePicker value={editForm.rebooking_due_date || ''} onChange={v => setEditForm({ ...editForm, rebooking_due_date: v })} className="mt-1.5" />
               </div>
             </div>
 

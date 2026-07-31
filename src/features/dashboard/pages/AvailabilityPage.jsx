@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { format, addDays, startOfWeek, parseISO, isSameDay } from 'date-fns';
 import { toast } from 'sonner';
+import DatePicker from '@/shared/components/DatePicker';
 import { listItems } from '@/shared/lib/listResponse';
 
 // Salon calendar envelope - DEFAULTS only. Admins can override per-tenant in
@@ -340,17 +341,16 @@ export default function AvailabilityPage() {
               full week aligned to the schedule grid.
             */}
             <div className="relative">
-              <Input
-                type="date"
+              <DatePicker
                 value={format(weekStart, 'yyyy-MM-dd')}
-                onChange={(e) => {
-                  if (!e.target.value) return;
-                  const picked = new Date(e.target.value + 'T00:00:00');
+                onChange={(v) => {
+                  if (!v) return;
+                  const picked = new Date(v + 'T00:00:00');
                   if (isNaN(picked.getTime())) return;
                   setWeekStart(startOfWeek(picked, { weekStartsOn: 1 }));
                 }}
-                className="h-9 text-xs w-[160px]"
-                title="Jump to a week"
+                clearable={false}
+                className="h-9 text-xs w-[170px]"
               />
             </div>
             <div className="flex gap-1">

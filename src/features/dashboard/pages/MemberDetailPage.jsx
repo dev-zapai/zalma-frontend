@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO, subDays, subYears } from 'date-fns';
 import { toast } from 'sonner';
+import DatePicker from '@/shared/components/DatePicker';
 import { listItems } from '@/shared/lib/listResponse';
 import { formatPrice } from '@/shared/lib/currency';
 
@@ -701,7 +702,7 @@ export default function MemberDetailPage() {
                   </div>
                   <div>
                     <Label className="text-xs">Start Date</Label>
-                    <Input type="date" className="mt-1 h-8 text-xs" value={empForm.start_date} onChange={e => setEmpForm(f => ({ ...f, start_date: e.target.value }))} />
+                    <DatePicker className="mt-1 h-8 text-xs" value={empForm.start_date} onChange={v => setEmpForm(f => ({ ...f, start_date: v }))} />
                   </div>
                 </div>
                 <div>

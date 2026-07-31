@@ -34,6 +34,8 @@ export default function ClientsPage() {
   const [newClientFilter, setNewClientFilter] = useState(searchParams.get('new_client') || 'all');
   const [rebookingFilter, setRebookingFilter] = useState(searchParams.get('rebooking_due') || 'all');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
+  // Deep-link filter from Mission Control ("N clients need profile completion")
+  const registrationFilter = searchParams.get('registration') || '';
 
   // Sort
   const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || 'name');
@@ -70,12 +72,13 @@ export default function ClientsPage() {
       if (statusFilter === 'active') params.active = true;
       if (statusFilter === 'inactive') params.active = false;
       if (statusFilter === 'archived') params.archived = true;
+      if (registrationFilter) params.registration = registrationFilter;
       const res = await api.get('/clients', { params });
       setClients(listItems(res.data));
       if (res.data?.total_pages) setTotalPages(res.data.total_pages);
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, sortBy, sortDir, page]);
+  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, sortBy, sortDir, page]);
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
   useEffect(() => { fetchClients(); }, [fetchClients]);
@@ -90,8 +93,9 @@ export default function ClientsPage() {
     if (statusFilter !== 'all') p.set('status', statusFilter);
     if (sortBy !== 'name') p.set('sort_by', sortBy);
     if (sortDir !== 'asc') p.set('sort_dir', sortDir);
+    if (registrationFilter) p.set('registration', registrationFilter);
     setSearchParams(p, { replace: true });
-  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, sortBy, sortDir, setSearchParams]);
+  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, sortBy, sortDir, setSearchParams]);
 
   const handleSort = (col) => {
     if (sortBy === col) {
@@ -245,6 +249,21 @@ export default function ClientsPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Clients</h1>
+          {registrationFilter === 'pending' && (
+            <button
+              type="button"
+              onClick={() => {
+                const p = new URLSearchParams(searchParams);
+                p.delete('registration');
+                setSearchParams(p, { replace: true });
+              }}
+              className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-xs font-medium text-amber-700 hover:bg-amber-100"
+              title="Showing only clients with incomplete profiles - click to clear"
+            >
+              Pending profiles only
+              <span className="text-amber-500">&times;</span>
+            </button>
+          )}
           <p className="text-sm text-slate-500 mt-1">Manage pet owners and their contact details</p>
         </div>
         <Button data-testid="add-client-btn" onClick={openNew} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg">

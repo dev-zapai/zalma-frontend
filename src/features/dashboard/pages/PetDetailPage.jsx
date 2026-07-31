@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO, differenceInYears, differenceInMonths } from 'date-fns';
 import { toast } from 'sonner';
+import DatePicker from '@/shared/components/DatePicker';
 import { listItems } from '@/shared/lib/listResponse';
 
 const STATUS_STYLES = {
@@ -63,7 +64,12 @@ export default function PetDetailPage() {
 
   // Pet edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editSection, setEditSection] = useState('details'); // 'details' | 'health'
   const [editForm, setEditForm] = useState({});
+  // Grooming note add/edit
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [noteForm, setNoteForm] = useState({});
+  const [savingNote, setSavingNote] = useState(false);
   const [savingPet, setSavingPet] = useState(false);
 
   // Vaccination & Registration records
@@ -109,7 +115,8 @@ export default function PetDetailPage() {
 
   useEffect(() => { fetchPet(); fetchVaccinations(); fetchRegistrations(); }, [fetchPet, fetchVaccinations, fetchRegistrations]);
 
-  const openEditPet = () => {
+  const openEditSection = (section) => {
+    setEditSection(section);
     setEditForm({
       name: pet?.name || '',
       species: pet?.species || '',
@@ -133,8 +140,60 @@ export default function PetDetailPage() {
       reg_expiry: pet?.reg_expiry || '',
       tag_number: pet?.tag_number || '',
       notes: pet?.notes || '',
+      // Insurance / vet-claim grade fields
+      distinctive_markings: pet?.distinctive_markings || '',
+      desexed_date: pet?.desexed_date || '',
+      vet_clinic_name: pet?.vet_clinic_name || '',
+      vet_phone: pet?.vet_phone || '',
+      medications: pet?.medications || '',
+      dietary_requirements: pet?.dietary_requirements || '',
+      behavioural_notes: pet?.behavioural_notes || '',
+      insurance_provider: pet?.insurance_provider || '',
+      insurance_policy_number: pet?.insurance_policy_number || '',
     });
     setEditDialogOpen(true);
+  };
+
+  const openAddNote = () => {
+    setNoteForm({ id: null, coat_condition: '', groomer_notes: '', next_recommended_date: '' });
+    setNoteDialogOpen(true);
+  };
+  const openEditNote = (note) => {
+    setNoteForm({
+      id: note.id,
+      coat_condition: note.coat_condition || '',
+      groomer_notes: note.groomer_notes || '',
+      next_recommended_date: note.next_recommended_date || '',
+    });
+    setNoteDialogOpen(true);
+  };
+  const handleSaveNote = async () => {
+    if (!noteForm.groomer_notes && !noteForm.coat_condition) {
+      toast.error('Add a note before saving');
+      return;
+    }
+    setSavingNote(true);
+    try {
+      const payload = {
+        coat_condition: noteForm.coat_condition || null,
+        groomer_notes: noteForm.groomer_notes || null,
+        next_recommended_date: noteForm.next_recommended_date || null,
+      };
+      if (noteForm.id) {
+        await api.put(`/grooming-notes/${noteForm.id}`, payload);
+        toast.success('Note updated');
+      } else {
+        await api.post('/grooming-notes', { pet_id: petId, ...payload });
+        toast.success('Note added');
+      }
+      setNoteDialogOpen(false);
+      // refetch notes
+      const res = await api.get('/grooming-notes', { params: { pet_id: petId, limit: 200 } });
+      setNotes(listItems(res.data));
+    } catch {
+      toast.error('Failed to save note');
+    }
+    setSavingNote(false);
   };
 
   const handleSavePet = async () => {
@@ -154,15 +213,16 @@ export default function PetDetailPage() {
         desexed_status: editForm.desexed_status,
         special_flag: editForm.special_flag || null,
         is_new_pet: editForm.is_new_pet,
-        vaccination_status: editForm.vaccination_status || null,
-        vaccination_type: editForm.vaccination_type || null,
-        vaccination_expiry: editForm.vaccination_expiry || null,
-        vaccination_proof_url: editForm.vaccination_proof_url || null,
-        council_name: editForm.council_name || null,
-        council_reg_number: editForm.council_reg_number || null,
-        reg_expiry: editForm.reg_expiry || null,
-        tag_number: editForm.tag_number || null,
         notes: editForm.notes || null,
+        distinctive_markings: editForm.distinctive_markings || null,
+        desexed_date: editForm.desexed_date || null,
+        vet_clinic_name: editForm.vet_clinic_name || null,
+        vet_phone: editForm.vet_phone || null,
+        medications: editForm.medications || null,
+        dietary_requirements: editForm.dietary_requirements || null,
+        behavioural_notes: editForm.behavioural_notes || null,
+        insurance_provider: editForm.insurance_provider || null,
+        insurance_policy_number: editForm.insurance_policy_number || null,
       });
       toast.success('Pet updated');
       setEditDialogOpen(false);
@@ -394,9 +454,7 @@ export default function PetDetailPage() {
               {pet.owner && <> · Owner: <button onClick={() => navigate(`/dashboard/clients/${pet.owner.id}`)} className="text-primary hover:underline">{pet.owner.full_name}</button></>}
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={openEditPet}>
-            <Edit2 className="h-3.5 w-3.5 mr-1.5" /> Edit
-          </Button>
+
         </div>
       </div>
 
@@ -455,22 +513,18 @@ export default function PetDetailPage() {
         {/* ═══ Overview Tab - everything at a glance ═══ */}
         <TabsContent value="overview" className="space-y-6">
 
-          {/*
-            CSS Grid subgrid approach: use a 3-col × 2-row grid so
-            Owner and Health share Row 1 height, Vaccination and
-            Registration share Row 2 height, and Pet Details spans
-            both rows in Col 1.
-
-            grid-rows: [auto auto] - each row sizes to its tallest cell.
-            Pet Details: row-span-2 so it stretches across both.
-          */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 lg:grid-rows-2 gap-6">
-            {/* Col 1, Row 1+2: Pet Details spans both rows */}
-            <Card className="rounded-xl border-slate-200/60 lg:row-span-2">
-              <CardHeader className="pb-3">
+          {/* Three equal-height cards in one row - bottoms align cleanly.
+              The vaccination/registration summaries live in their own tabs. */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+            {/* Pet Details */}
+            <Card className="rounded-xl border-slate-200/60">
+              <CardHeader className="pb-3 flex-row items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <PawPrint className="h-4 w-4 text-primary" /> Pet Details
                 </CardTitle>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => openEditSection('details')}>
+                  <Edit2 className="h-3.5 w-3.5 mr-1" /> Edit
+                </Button>
               </CardHeader>
               <CardContent className="space-y-0">
                 <InfoRow label="Name" value={pet.name} />
@@ -486,7 +540,7 @@ export default function PetDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Col 2, Row 1: Owner */}
+            {/* Owner (read-only, from the client record) */}
             <Card className="rounded-xl border-slate-200/60">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -509,16 +563,27 @@ export default function PetDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Col 3, Row 1: Health - same row as Owner so heights match */}
+            {/* Health & Medical */}
             <Card className="rounded-xl border-slate-200/60">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-3 flex-row items-center justify-between">
                 <CardTitle className="text-base flex items-center gap-2">
                   <Heart className="h-4 w-4 text-rose-500" /> Health & Medical
                 </CardTitle>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => openEditSection('health')}>
+                  <Edit2 className="h-3.5 w-3.5 mr-1" /> Edit
+                </Button>
               </CardHeader>
               <CardContent className="space-y-0">
-                <InfoRow label="Desexed" value={pet.desexed_status === true ? <span className="text-green-600 font-medium">Yes</span> : pet.desexed_status === false ? <span className="text-amber-600 font-medium">No</span> : null} />
-                <InfoRow label="Medical" value={pet.medical_conditions} />
+                <InfoRow label="Desexed" value={pet.desexed_status === true ? <span className="text-green-600 font-medium">Yes{pet.desexed_date ? ` (${pet.desexed_date})` : ''}</span> : pet.desexed_status === false ? <span className="text-amber-600 font-medium">No</span> : null} />
+                <InfoRow label="Medical conditions" value={pet.medical_conditions} />
+                <InfoRow label="Medications" value={pet.medications} />
+                <InfoRow label="Dietary needs" value={pet.dietary_requirements} />
+                <InfoRow label="Distinctive markings" value={pet.distinctive_markings} />
+                <InfoRow label="Behaviour / handling" value={pet.behavioural_notes} />
+                <InfoRow label="Regular vet" value={pet.vet_clinic_name} />
+                <InfoRow label="Vet phone" value={pet.vet_phone} />
+                <InfoRow label="Insurer" value={pet.insurance_provider} />
+                <InfoRow label="Policy number" value={pet.insurance_policy_number} />
                 {pet.allergy && (
                   <div className="py-2.5 border-b border-slate-50">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -537,73 +602,25 @@ export default function PetDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Col 2, Row 2: Vaccination - same row as Registration so heights match */}
-            <Card className="rounded-xl border-slate-200/60">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Syringe className="h-4 w-4 text-blue-500" /> Vaccination
-                  </CardTitle>
-                  {vaccOverallStatus === 'expired' && <Badge className="bg-red-100 text-red-700 border border-red-200 text-[10px]">Expired</Badge>}
-                  {vaccOverallStatus === 'valid' && <Badge className="bg-green-100 text-green-700 border border-green-200 text-[10px]">Valid</Badge>}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-0">
-                <InfoRow label="Records" value={vaccinations.length || 'None'} />
-                {vaccinations.slice(0, 2).map(v => (
-                  <InfoRow key={v.id} label={v.vaccination_type || 'Vaccination'} value={v.expiry_date ? (
-                    <span className={new Date(v.expiry_date) < new Date() ? 'text-red-600 font-medium' : 'text-green-600 font-medium'}>{v.expiry_date}</span>
-                  ) : '-'} />
-                ))}
-                <div className="pt-2 mt-2 border-t border-slate-100">
-                  <button onClick={() => setActiveTab('vaccination')} className="text-xs text-primary hover:underline flex items-center gap-1">
-                    <FileText className="h-3 w-3" /> View all vaccination records →
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Col 3, Row 2: Registration - same row as Vaccination so heights match */}
-            <Card className="rounded-xl border-slate-200/60">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-indigo-500" /> Council Registration
-                  </CardTitle>
-                  {regOverallStatus === 'expired' && <Badge className="bg-red-100 text-red-700 border border-red-200 text-[10px]">Expired</Badge>}
-                  {regOverallStatus === 'valid' && <Badge className="bg-green-100 text-green-700 border border-green-200 text-[10px]">Current</Badge>}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-0">
-                <InfoRow label="Records" value={registrations.length || 'None'} />
-                {registrations.slice(0, 2).map(r => (
-                  <InfoRow key={r.id} label={r.council_name || 'Registration'} value={r.expiry_date ? (
-                    <span className={new Date(r.expiry_date) < new Date() ? 'text-red-600 font-medium' : ''}>{r.expiry_date}</span>
-                  ) : '-'} />
-                ))}
-                <div className="pt-2 mt-2 border-t border-slate-100">
-                  <button onClick={() => setActiveTab('registration')} className="text-xs text-primary hover:underline flex items-center gap-1">
-                    <FileText className="h-3 w-3" /> View all registration records →
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Row 2: Grooming Notes */}
           <Card className="rounded-xl border-slate-200/60">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex-row items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-primary" /> Grooming Notes
                 <span className="text-xs text-slate-400 font-normal">({notes.length})</span>
               </CardTitle>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={openAddNote}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Note
+              </Button>
             </CardHeader>
             <CardContent>
               {notes.length === 0 ? (
                 <div className="text-center py-8 text-slate-400">
                   <ClipboardList className="h-8 w-8 mx-auto mb-2 opacity-40" />
                   <p className="text-sm">No grooming notes yet</p>
-                  <p className="text-xs mt-1">Added from the appointment page after each session</p>
+                  <p className="text-xs mt-1">Add one here, or they're captured from each appointment</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -617,6 +634,7 @@ export default function PetDetailPage() {
                           <div className="flex items-center gap-2 mb-1.5">
                             <p className="text-xs text-slate-500">{note.created_at && format(parseISO(note.created_at), 'MMM d, yyyy')}</p>
                             {note.staff?.full_name && <Badge variant="outline" className="text-xs">{note.staff.full_name}</Badge>}
+                            <button onClick={() => openEditNote(note)} className="ml-auto text-xs text-primary hover:underline shrink-0">Edit</button>
                           </div>
                           {note.coat_condition && <p className="text-sm text-slate-900 mb-1"><span className="font-medium">Coat:</span> {note.coat_condition}</p>}
                           {note.services_performed?.length > 0 && (
@@ -789,11 +807,11 @@ export default function PetDetailPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Date Given</Label>
-                    <Input type="date" value={vaccForm.vaccination_date || ''} onChange={e => setVaccForm({ ...vaccForm, vaccination_date: e.target.value })} className="mt-1.5" />
+                    <DatePicker value={vaccForm.vaccination_date || ''} onChange={v => setVaccForm({ ...vaccForm, vaccination_date: v })} className="mt-1.5" />
                   </div>
                   <div>
                     <Label>Expiry Date</Label>
-                    <Input type="date" value={vaccForm.expiry_date || ''} onChange={e => setVaccForm({ ...vaccForm, expiry_date: e.target.value })} className="mt-1.5" />
+                    <DatePicker value={vaccForm.expiry_date || ''} onChange={v => setVaccForm({ ...vaccForm, expiry_date: v })} className="mt-1.5" />
                   </div>
                 </div>
                 <div>
@@ -970,7 +988,7 @@ export default function PetDetailPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Expiry Date</Label>
-                    <Input type="date" value={regForm.expiry_date || ''} onChange={e => setRegForm({ ...regForm, expiry_date: e.target.value })} className="mt-1.5" />
+                    <DatePicker value={regForm.expiry_date || ''} onChange={v => setRegForm({ ...regForm, expiry_date: v })} className="mt-1.5" />
                   </div>
                   <div>
                     <Label>Tag / Collar ID</Label>
@@ -1029,22 +1047,15 @@ export default function PetDetailPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Edit Pet Dialog - Tabbed */}
+      {/* Edit dialog - scoped to the section whose pencil was clicked */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Pet Profile</DialogTitle>
+            <DialogTitle>{editSection === 'health' ? 'Edit Health & Medical' : 'Edit Pet Details'}</DialogTitle>
           </DialogHeader>
-          <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="w-full grid grid-cols-4">
-              <TabsTrigger value="basic">Basic</TabsTrigger>
-              <TabsTrigger value="health">Health</TabsTrigger>
-              <TabsTrigger value="vaccination">Vaccination</TabsTrigger>
-              <TabsTrigger value="registration">Registration</TabsTrigger>
-            </TabsList>
 
-            {/* Basic Tab */}
-            <TabsContent value="basic" className="space-y-4 py-2">
+          {editSection === 'details' && (
+            <div className="space-y-4 py-2">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Name</Label>
@@ -1090,120 +1101,135 @@ export default function PetDetailPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Date of Birth</Label>
-                  <Input type="date" value={editForm.date_of_birth || ''} onChange={e => setEditForm({ ...editForm, date_of_birth: e.target.value })} className="mt-1.5" />
+                  <DatePicker value={editForm.date_of_birth || ''} onChange={v => setEditForm({ ...editForm, date_of_birth: v })} className="mt-1.5" />
                 </div>
                 <div>
                   <Label>Microchip ID</Label>
-                  <Input value={editForm.microchip_id || ''} onChange={e => setEditForm({ ...editForm, microchip_id: e.target.value })} className="mt-1.5" />
+                  <Input value={editForm.microchip_id || ''} onChange={e => setEditForm({ ...editForm, microchip_id: e.target.value })} placeholder="15-digit chip number" className="mt-1.5" />
                 </div>
               </div>
-            </TabsContent>
-
-            {/* Health Tab */}
-            <TabsContent value="health" className="space-y-4 py-2">
-              <div>
-                <Label>Allergy</Label>
-                <Input
-                  value={editForm.allergy || ''}
-                  onChange={e => setEditForm({ ...editForm, allergy: e.target.value })}
-                  placeholder="e.g. Chicken, fragrances, certain shampoos"
-                  className="mt-1.5"
-                />
-                <p className="text-xs text-slate-400 mt-1">Drives allergy alerts on the dashboard</p>
-              </div>
-              <div>
-                <Label>Medical Conditions</Label>
-                <Textarea
-                  value={editForm.medical_conditions || ''}
-                  onChange={e => setEditForm({ ...editForm, medical_conditions: e.target.value })}
-                  placeholder="Heart condition, arthritis, epilepsy, etc."
-                  rows={3}
-                  className="mt-1.5"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label>Desexed</Label>
-                <Switch checked={editForm.desexed_status ?? false} onCheckedChange={v => setEditForm({ ...editForm, desexed_status: v })} />
-              </div>
-              <div className="flex items-center justify-between">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>New Pet</Label>
-                  <p className="text-xs text-slate-400 mt-0.5">Auto-set to No after first completed appointment</p>
+                  <Label>Tag / Collar ID</Label>
+                  <Input value={editForm.tag_number || ''} onChange={e => setEditForm({ ...editForm, tag_number: e.target.value })} className="mt-1.5" />
                 </div>
-                <Switch checked={editForm.is_new_pet ?? true} onCheckedChange={v => setEditForm({ ...editForm, is_new_pet: v })} />
-              </div>
-              <div>
-                <Label>Special Flag</Label>
-                <Select value={editForm.special_flag || ''} onValueChange={v => setEditForm({ ...editForm, special_flag: v })}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="None" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="aggressive">Aggressive</SelectItem>
-                    <SelectItem value="senior">Senior Pet</SelectItem>
-                    <SelectItem value="first_visit">First Visit</SelectItem>
-                    <SelectItem value="matting">Matting</SelectItem>
-                    <SelectItem value="anxious">Anxious</SelectItem>
-                    <SelectItem value="medical">Medical Condition</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div>
+                  <Label>Special Flag</Label>
+                  <Select value={editForm.special_flag || ''} onValueChange={v => setEditForm({ ...editForm, special_flag: v })}>
+                    <SelectTrigger className="mt-1.5"><SelectValue placeholder="None" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="aggressive">Aggressive</SelectItem>
+                      <SelectItem value="senior">Senior Pet</SelectItem>
+                      <SelectItem value="first_visit">First Visit</SelectItem>
+                      <SelectItem value="matting">Matting</SelectItem>
+                      <SelectItem value="anxious">Anxious</SelectItem>
+                      <SelectItem value="medical">Medical Condition</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div>
                 <Label>Special Notes</Label>
-                <Textarea
-                  value={editForm.notes || ''}
-                  onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
-                  placeholder="Handling tips, behaviour notes, things to remember..."
-                  rows={3}
-                  className="mt-1.5"
-                />
+                <Textarea value={editForm.notes || ''} onChange={e => setEditForm({ ...editForm, notes: e.target.value })} placeholder="Handling tips, things to remember..." rows={2} className="mt-1.5" />
               </div>
-            </TabsContent>
+            </div>
+          )}
 
-            {/* Vaccination Tab */}
-            <TabsContent value="vaccination" className="space-y-4 py-2">
-              <div>
-                <Label>Vaccination Status</Label>
-                <Input value={editForm.vaccination_status || ''} onChange={e => setEditForm({ ...editForm, vaccination_status: e.target.value })} placeholder="e.g. Up to date, Overdue" className="mt-1.5" />
+          {editSection === 'health' && (
+            <div className="space-y-4 py-2">
+              <div className="flex items-center justify-between">
+                <div><Label>Desexed</Label></div>
+                <Switch checked={editForm.desexed_status ?? false} onCheckedChange={v => setEditForm({ ...editForm, desexed_status: v })} />
               </div>
-              <div>
-                <Label>Vaccination Type</Label>
-                <Input value={editForm.vaccination_type || ''} onChange={e => setEditForm({ ...editForm, vaccination_type: e.target.value })} placeholder="e.g. C5, F3" className="mt-1.5" />
-              </div>
-              <div>
-                <Label>Vaccination Expiry</Label>
-                <Input type="date" value={editForm.vaccination_expiry || ''} onChange={e => setEditForm({ ...editForm, vaccination_expiry: e.target.value })} className="mt-1.5" />
-              </div>
-              {editForm.vaccination_proof_url && (
+              {editForm.desexed_status && (
                 <div>
-                  <Label>Vaccination Proof URL</Label>
-                  <p className="text-sm text-slate-600 mt-1.5 break-all bg-slate-50 p-2 rounded">{editForm.vaccination_proof_url}</p>
+                  <Label>Desexed date</Label>
+                  <DatePicker value={editForm.desexed_date || ''} onChange={v => setEditForm({ ...editForm, desexed_date: v })} className="mt-1.5" />
                 </div>
               )}
-            </TabsContent>
+              <div>
+                <Label>Allergies</Label>
+                <Input value={editForm.allergy || ''} onChange={e => setEditForm({ ...editForm, allergy: e.target.value })} placeholder="e.g. Chicken, fragrances, certain shampoos" className="mt-1.5" />
+                <p className="text-xs text-slate-400 mt-1">Drives allergy alerts on the dashboard</p>
+              </div>
+              <div>
+                <Label>Medical conditions</Label>
+                <Textarea value={editForm.medical_conditions || ''} onChange={e => setEditForm({ ...editForm, medical_conditions: e.target.value })} placeholder="Chronic or pre-existing: heart condition, arthritis, epilepsy..." rows={2} className="mt-1.5" />
+              </div>
+              <div>
+                <Label>Current medications</Label>
+                <Textarea value={editForm.medications || ''} onChange={e => setEditForm({ ...editForm, medications: e.target.value })} placeholder="Name, dose, frequency" rows={2} className="mt-1.5" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Dietary requirements</Label>
+                  <Input value={editForm.dietary_requirements || ''} onChange={e => setEditForm({ ...editForm, dietary_requirements: e.target.value })} placeholder="Prescription diet, allergies" className="mt-1.5" />
+                </div>
+                <div>
+                  <Label>Distinctive markings</Label>
+                  <Input value={editForm.distinctive_markings || ''} onChange={e => setEditForm({ ...editForm, distinctive_markings: e.target.value })} placeholder="Identification for claims" className="mt-1.5" />
+                </div>
+              </div>
+              <div>
+                <Label>Behaviour / handling notes</Label>
+                <Textarea value={editForm.behavioural_notes || ''} onChange={e => setEditForm({ ...editForm, behavioural_notes: e.target.value })} placeholder="Bite risk, anxiety, muzzle required, sedation history..." rows={2} className="mt-1.5" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Regular vet clinic</Label>
+                  <Input value={editForm.vet_clinic_name || ''} onChange={e => setEditForm({ ...editForm, vet_clinic_name: e.target.value })} className="mt-1.5" />
+                </div>
+                <div>
+                  <Label>Vet phone</Label>
+                  <Input value={editForm.vet_phone || ''} onChange={e => setEditForm({ ...editForm, vet_phone: e.target.value })} className="mt-1.5" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Insurance provider</Label>
+                  <Input value={editForm.insurance_provider || ''} onChange={e => setEditForm({ ...editForm, insurance_provider: e.target.value })} placeholder="e.g. Bow Wow Meow, RSPCA" className="mt-1.5" />
+                </div>
+                <div>
+                  <Label>Policy number</Label>
+                  <Input value={editForm.insurance_policy_number || ''} onChange={e => setEditForm({ ...editForm, insurance_policy_number: e.target.value })} className="mt-1.5" />
+                </div>
+              </div>
+            </div>
+          )}
 
-            {/* Registration Tab */}
-            <TabsContent value="registration" className="space-y-4 py-2">
-              <div>
-                <Label>Council Name</Label>
-                <Input value={editForm.council_name || ''} onChange={e => setEditForm({ ...editForm, council_name: e.target.value })} placeholder="e.g. City of Melbourne" className="mt-1.5" />
-              </div>
-              <div>
-                <Label>Council Registration Number</Label>
-                <Input value={editForm.council_reg_number || ''} onChange={e => setEditForm({ ...editForm, council_reg_number: e.target.value })} className="mt-1.5" />
-              </div>
-              <div>
-                <Label>Registration Expiry</Label>
-                <Input type="date" value={editForm.reg_expiry || ''} onChange={e => setEditForm({ ...editForm, reg_expiry: e.target.value })} className="mt-1.5" />
-              </div>
-              <div>
-                <Label>Tag Number</Label>
-                <Input value={editForm.tag_number || ''} onChange={e => setEditForm({ ...editForm, tag_number: e.target.value })} className="mt-1.5" />
-              </div>
-            </TabsContent>
-          </Tabs>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSavePet} disabled={savingPet} className="bg-primary hover:bg-primary/90 text-primary-foreground">
               {savingPet ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Grooming note add / edit */}
+      <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{noteForm.id ? 'Edit Grooming Note' : 'Add Grooming Note'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Coat condition</Label>
+              <Input value={noteForm.coat_condition || ''} onChange={e => setNoteForm({ ...noteForm, coat_condition: e.target.value })} placeholder="e.g. Matted behind ears, healthy" className="mt-1.5" />
+            </div>
+            <div>
+              <Label>Note</Label>
+              <Textarea value={noteForm.groomer_notes || ''} onChange={e => setNoteForm({ ...noteForm, groomer_notes: e.target.value })} placeholder="Observations, handling notes, products used..." rows={4} className="mt-1.5" />
+            </div>
+            <div>
+              <Label>Next recommended visit</Label>
+              <DatePicker value={noteForm.next_recommended_date || ''} onChange={v => setNoteForm({ ...noteForm, next_recommended_date: v })} className="mt-1.5" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoteDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveNote} disabled={savingNote} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              {savingNote ? 'Saving...' : 'Save Note'}
             </Button>
           </DialogFooter>
         </DialogContent>

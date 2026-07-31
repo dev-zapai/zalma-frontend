@@ -15,6 +15,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/shared/components/ui/dialog';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import DatePicker from '@/shared/components/DatePicker';
 import { formatPrice } from '@/shared/lib/currency';
 import { salonTodayISO, salonNowTime } from '@/shared/lib/salonTime';
 import { computeBundlePricing, recommendBundles } from '@/shared/lib/bundlePricing';
@@ -726,12 +727,13 @@ export default function NewGroomingAppointmentPage() {
           <CardContent className="space-y-5">
             <div>
               <Label>Select Date *</Label>
-              <Input
-                type="date"
+              <DatePicker
                 value={selectedDate}
                 min={salonTodayISO(salonTz)}
-                onChange={e => { setSelectedDate(e.target.value); setSelectedSlot(null); }}
+                onChange={v => { setSelectedDate(v); setSelectedSlot(null); }}
+                clearable={false}
                 className="mt-1.5"
+                data-testid="wizard-date"
               />
               {salonTz && (
                 <p className="text-[11px] text-slate-400 mt-1">
