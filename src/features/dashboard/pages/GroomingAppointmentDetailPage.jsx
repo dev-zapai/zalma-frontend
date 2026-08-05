@@ -85,6 +85,7 @@ export default function GroomingAppointmentDetailPage() {
 
   const [appt, setAppt] = useState(null);
   const [services, setServices] = useState([]); // available services catalog
+  const [bundles, setBundles] = useState([]); // active service bundles
   const [staffList, setStaffList] = useState([]); // available staff for groomer change
   const [apptServices, setApptServices] = useState([]); // services added to this appointment
   const [photos, setPhotos] = useState([]);
@@ -157,9 +158,10 @@ export default function GroomingAppointmentDetailPage() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [apptRes, svcsRes, tenantRes, staffRes, notesRes] = await Promise.all([
+      const [apptRes, svcsRes, bundlesRes, tenantRes, staffRes, notesRes] = await Promise.all([
         api.get(`/g/appointments/${appointmentId}`),
         api.get('/services', { params: { limit: 200 } }),
+        api.get('/service-bundles').catch(() => ({ data: [] })),
         api.get('/tenant/me'),
         api.get('/staff', { params: { limit: 200 } }),
         api.get('/grooming-notes', { params: { appointment_id: appointmentId } }).catch(() => ({ data: [] })),
@@ -172,6 +174,7 @@ export default function GroomingAppointmentDetailPage() {
         setFeedback({ rating: apptRes.data.feedback.rating || 0, comments: apptRes.data.feedback.comments || '' });
       }
       setServices(listItems(svcsRes.data));
+      setBundles((bundlesRes?.data || []).filter(b => b.is_active !== false));
       setStaffList(listItems(staffRes.data));
       setTenant(tenantRes.data);
       setNotes(listItems(notesRes.data));
@@ -325,9 +328,14 @@ export default function GroomingAppointmentDetailPage() {
     : parseFloat(receiptForm.discount_amount) || 0;
   const grandTotal = Math.max(0, subtotal + taxAmount - discountAmount);
 
-  // ─── Check if registration is pending ──────────────────────────────────────
-  const clientPending = appt?.client?.registration_status === 'pending';
-  const petPending = appt?.pet && !appt.pet.breed && !appt.pet.weight;
+  // ─── Profile tags (server-computed) ─────────────────────────────────────────
+  // partial = below 100% of the full profile fields -> "Partially Completed".
+  // A complete client that has not verified email/phone reads "Unverified"
+  // (verification becomes mandatory for new clients once SES/SNS ships).
+  const clientPending = appt?.client?.profile_status === 'partial';
+  const clientUnverified = appt?.client?.profile_status === 'complete'
+    && appt?.client?.verification_status !== 'verified';
+  const petPending = appt?.pet?.profile_status === 'partial';
 
   const handleCheckIn = () => {
     if (clientPending || petPending) {
@@ -340,10 +348,12 @@ export default function GroomingAppointmentDetailPage() {
           notes: appt.client?.notes || '',
         },
         pet: {
+          species: appt.pet?.species || '',
           breed: appt.pet?.breed || '',
           weight: appt.pet?.weight || '',
           gender: appt.pet?.gender || '',
           color: appt.pet?.color || '',
+          date_of_birth: appt.pet?.date_of_birth || '',
           notes: appt.pet?.notes || '',
         },
       });
@@ -363,9 +373,15 @@ export default function GroomingAppointmentDetailPage() {
           registration_status: 'registered',
         });
       }
-      // Update pet if pending
+      // Update pet if pending - drop empty fields so typed ones
+      // (weight float, date_of_birth date) don't reject ''
       if (petPending && appt.pet?.id) {
-        await api.put(`/pets/${appt.pet.id}`, regForm.pet);
+        const petPayload = {};
+        Object.entries(regForm.pet).forEach(([k, v]) => {
+          if (v === '' || v == null) return;
+          petPayload[k] = k === 'weight' ? parseFloat(v) : v;
+        });
+        await api.put(`/pets/${appt.pet.id}`, petPayload);
       }
       // Now check in
       const res = await api.put(`/g/appointments/${appointmentId}`, { status: 'checked_in' });
@@ -429,8 +445,9 @@ export default function GroomingAppointmentDetailPage() {
     if (!serviceId) return;
     setStaffOptions(prev => (prev[serviceId] ? prev : { ...prev, [serviceId]: null }));
     try {
+      const isBundle = serviceId.startsWith('bundle:');
       const res = await api.get(`/g/appointments/${appointmentId}/staff-options`, {
-        params: { service_id: serviceId },
+        params: isBundle ? {} : { service_id: serviceId },
       });
       setStaffOptions(prev => ({ ...prev, [serviceId]: res.data.options || [] }));
     } catch {
@@ -454,29 +471,83 @@ export default function GroomingAppointmentDetailPage() {
     </span>
   );
 
+  // Mirror of the backend _line_total: percent capped at 100, never negative
+  const computeLineTotal = (unitPrice, quantity, dType, dValue) => {
+    let gross = Math.round(parseFloat(unitPrice || 0) * (quantity || 1) * 100) / 100;
+    const dv = parseFloat(dValue || 0);
+    if (dType === 'percent' && dv > 0) gross -= gross * Math.min(dv, 100) / 100;
+    else if (dType === 'amount' && dv > 0) gross -= dv;
+    return Math.round(Math.max(0, gross) * 100) / 100;
+  };
+
+  // Apply a discount change instantly (line total + subtotal update at once),
+  // then persist; on failure roll back to the previous rows.
+  const applyDiscount = async (item, dType, dValue) => {
+    const prevRows = apptServices;
+    setApptServices(rows => rows.map(r => r.id === item.id
+      ? { ...r, discount_type: dType, discount_value: dValue,
+          total: computeLineTotal(r.unit_price, r.quantity, dType, dValue) }
+      : r));
+    try {
+      const res = await api.put(`/g/appointments/${appointmentId}/services/${item.id}`, {
+        discount_type: dType,
+        discount_value: dValue,
+      });
+      setApptServices(rows => rows.map(r => (r.id === item.id ? res.data : r)));
+    } catch (err) {
+      setApptServices(prevRows);
+      lineEditError(err);
+    }
+  };
+
+  // Map a failed line-item edit to a friendly message. A 403/409/422 (a rule
+  // the server enforced) reads as "Not allowed"; anything else is a soft
+  // retry hint. Never surfaces a raw stack.
+  const lineEditError = (e) => {
+    const status = e?.response?.status;
+    const detail = e?.response?.data?.detail;
+    if (status === 403 || status === 409 || status === 422) {
+      toast.error(typeof detail === 'string' ? detail : 'Not allowed');
+    } else {
+      toast.error('Could not save. Please try again.');
+    }
+  };
+
   const handleAddService = async () => {
     if (!addServiceId) return;
-    const svc = services.find(s => s.id === addServiceId);
-    if (!svc) return;
     try {
-      const item = {
-        service_id: svc.id,
-        staff_id: addStaffId || null,
-        name: svc.name,
-        duration_minutes: svc.duration_minutes,
-        unit_price: parseFloat(svc.price),
-        quantity: addQty,
-        total: parseFloat(svc.price) * addQty,
-      };
-      const res = await api.post(`/g/appointments/${appointmentId}/services`, item);
-      setApptServices(prev => [...prev, res.data]);
+      if (addServiceId.startsWith('bundle:')) {
+        // Add the whole bundle - the server distributes the bundle price
+        // across its member service rows.
+        const bundleId = addServiceId.slice('bundle:'.length);
+        const res = await api.post(`/g/appointments/${appointmentId}/bundles`, {
+          bundle_id: bundleId,
+          staff_id: addStaffId || null,
+        });
+        setApptServices(prev => [...prev, ...(res.data.services || [])]);
+        toast.success(`Bundle added: ${res.data.bundle_name}`);
+      } else {
+        const svc = services.find(s => s.id === addServiceId);
+        if (!svc) return;
+        const item = {
+          service_id: svc.id,
+          staff_id: addStaffId || null,
+          name: svc.name,
+          duration_minutes: svc.duration_minutes,
+          unit_price: parseFloat(svc.price),
+          quantity: addQty,
+          total: parseFloat(svc.price) * addQty,
+        };
+        const res = await api.post(`/g/appointments/${appointmentId}/services`, item);
+        setApptServices(prev => [...prev, res.data]);
+        toast.success('Service added');
+      }
       setAddServiceId('');
       setAddStaffId('');
       setAddQty(1);
       // The appointment window auto-extended server-side - refresh header times
       api.get(`/g/appointments/${appointmentId}`).then(r => setAppt(r.data)).catch(() => {});
-      toast.success('Service added');
-    } catch (e) { toast.error('Failed to add service'); }
+    } catch (e) { toast.error(e?.response?.data?.detail || 'Failed to add'); }
   };
 
   const handleRemoveService = async (serviceItemId) => {
@@ -805,7 +876,8 @@ export default function GroomingAppointmentDetailPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
               <User className="h-3.5 w-3.5" /> Client
-              {clientPending && <Badge className="bg-amber-100 text-amber-700 border-amber-200 border rounded-full text-[10px] px-1.5 py-0">Pending</Badge>}
+              {clientPending && <Badge className="bg-amber-100 text-amber-700 border-amber-200 border rounded-full text-[10px] px-1.5 py-0">Partially Completed</Badge>}
+              {clientUnverified && <Badge className="bg-slate-100 text-slate-600 border-slate-200 border rounded-full text-[10px] px-1.5 py-0">Unverified</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1.5 text-sm">
@@ -836,7 +908,7 @@ export default function GroomingAppointmentDetailPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
               <PawPrint className="h-3.5 w-3.5" /> Pet
-              {petPending && <Badge className="bg-amber-100 text-amber-700 border-amber-200 border rounded-full text-[10px] px-1.5 py-0">Incomplete</Badge>}
+              {petPending && <Badge className="bg-amber-100 text-amber-700 border-amber-200 border rounded-full text-[10px] px-1.5 py-0">Partially Completed</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1.5 text-sm">
@@ -978,6 +1050,7 @@ export default function GroomingAppointmentDetailPage() {
                     <TableHead>Staff</TableHead>
                     <TableHead className="hidden sm:table-cell">Duration</TableHead>
                     <TableHead>Unit Price</TableHead>
+                    <TableHead>Discount</TableHead>
                     <TableHead>Qty</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead className="w-10"></TableHead>
@@ -1052,24 +1125,42 @@ export default function GroomingAppointmentDetailPage() {
                       <TableCell className="hidden sm:table-cell text-slate-500">
                         {item.duration_minutes ? `${item.duration_minutes} min` : '-'}
                       </TableCell>
+                      <TableCell className="text-slate-600">
+                        {formatPrice(item.unit_price, currency)}
+                      </TableCell>
                       <TableCell>
                         {!receipt ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            className="h-7 w-20 text-xs"
-                            defaultValue={item.unit_price}
-                            onBlur={async (e) => {
-                              const newPrice = parseFloat(e.target.value);
-                              if (isNaN(newPrice) || newPrice === item.unit_price) return;
-                              try {
-                                await api.put(`/g/appointments/${appointment.id}/services/${item.id}`, { unit_price: newPrice });
-                                fetchAll();
-                              } catch { toast.error('Failed to update price'); }
-                            }}
-                          />
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min={0}
+                              className="h-7 w-16 text-xs"
+                              defaultValue={item.discount_value || ''}
+                              placeholder="0"
+                              onBlur={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                if (val === (item.discount_value || 0)) return;
+                                applyDiscount(item, item.discount_type || 'amount', val);
+                              }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                            />
+                            <Select
+                              value={item.discount_type || 'amount'}
+                              onValueChange={(t) => {
+                                if (t === (item.discount_type || 'amount')) return;
+                                applyDiscount(item, t, item.discount_value || 0);
+                              }}
+                            >
+                              <SelectTrigger className="h-7 w-14 text-xs px-2"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="amount">{getCurrencySymbol(currency)}</SelectItem>
+                                <SelectItem value="percent">%</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         ) : (
-                          formatPrice(item.unit_price, currency)
+                          item.discount_value ? (item.discount_type === 'percent' ? `${item.discount_value}%` : formatPrice(item.discount_value, currency)) : '-'
                         )}
                       </TableCell>
                       <TableCell>{item.quantity}</TableCell>
@@ -1089,7 +1180,7 @@ export default function GroomingAppointmentDetailPage() {
                   })}
                   {apptServices.length > 0 && (
                     <TableRow className="bg-slate-50/60">
-                      <TableCell colSpan={5} className="text-right font-semibold text-slate-700">Subtotal</TableCell>
+                      <TableCell colSpan={6} className="text-right font-semibold text-slate-700">Subtotal</TableCell>
                       <TableCell colSpan={2} className="font-bold text-slate-900">{formatPrice(subtotal, currency)}</TableCell>
                     </TableRow>
                   )}
@@ -1120,6 +1211,18 @@ export default function GroomingAppointmentDetailPage() {
                         <SelectValue placeholder="Select a service..." />
                       </SelectTrigger>
                       <SelectContent>
+                        {bundles.length > 0 && (
+                          <>
+                            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-600">Bundles</div>
+                            {bundles.map(b => (
+                              <SelectItem key={`bundle:${b.id}`} value={`bundle:${b.id}`}>
+                                {b.name} · {formatPrice(b.bundle_price, currency)}
+                                <span className="ml-1 text-[10px] text-violet-500">bundle</span>
+                              </SelectItem>
+                            ))}
+                            <div className="px-2 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 border-t border-slate-100">Individual services</div>
+                          </>
+                        )}
                         {services.map(s => (
                           <SelectItem key={s.id} value={s.id}>
                             {s.name} · {formatPrice(s.price, currency)} ({s.duration_minutes} min)
@@ -1153,6 +1256,7 @@ export default function GroomingAppointmentDetailPage() {
                     <Label className="text-sm whitespace-nowrap">Qty:</Label>
                     <Input
                       type="number" min={1} value={addQty}
+                      disabled={addServiceId.startsWith('bundle:')}
                       onChange={e => setAddQty(parseInt(e.target.value) || 1)}
                       className="w-16"
                     />
@@ -1811,6 +1915,32 @@ export default function GroomingAppointmentDetailPage() {
                   <h4 className="font-semibold text-sm text-slate-700 flex items-center gap-1.5">
                     <PawPrint className="h-4 w-4" /> Pet: {appt.pet?.name} ({appt.pet?.species})
                   </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Species</Label>
+                      <Select
+                        value={regForm.pet.species}
+                        onValueChange={v => setRegForm(f => ({ ...f, pet: { ...f.pet, species: v } }))}
+                      >
+                        <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="dog">Dog</SelectItem>
+                          <SelectItem value="cat">Cat</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Date of birth</Label>
+                      <div className="mt-1">
+                        <DatePicker
+                          value={regForm.pet.date_of_birth}
+                          onChange={v => setRegForm(f => ({ ...f, pet: { ...f.pet, date_of_birth: v } }))}
+                          max={new Date().toISOString().slice(0, 10)}
+                        />
+                      </div>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">Breed</Label>

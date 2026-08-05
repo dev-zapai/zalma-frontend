@@ -89,6 +89,10 @@ export default function ClientDetailPage() {
       toast.error('Pet name is required');
       return;
     }
+    if (!petForm.species) {
+      toast.error('Species is required');
+      return;
+    }
     try {
       // Drop empty fields - the API rejects '' for typed fields like
       // weight (float) and date_of_birth (date). The schema field for

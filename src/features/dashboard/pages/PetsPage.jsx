@@ -157,6 +157,10 @@ export default function PetsPage() {
       toast.error('Pet name is required');
       return;
     }
+    if (!form.species) {
+      toast.error('Species is required');
+      return;
+    }
     if (!form.owner_id) {
       toast.error(clients.length === 0
         ? 'No clients yet - add the owner on the Clients page first, then add their pet.'

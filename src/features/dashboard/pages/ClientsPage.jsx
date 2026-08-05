@@ -489,7 +489,7 @@ export default function ClientsPage() {
                 <Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} type="email" placeholder="john@email.com" className="mt-1.5" />
               </div>
               <div>
-                <Label>Phone</Label>
+                <Label>Phone *</Label>
                 <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+1 555-0123" className="mt-1.5" />
               </div>
             </div>
@@ -511,7 +511,7 @@ export default function ClientsPage() {
             <Button
               data-testid="client-save-btn"
               onClick={handleSave}
-              disabled={!form.full_name}
+              disabled={!form.full_name || !form.phone}
               className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               {editId ? 'Update' : 'Add Client'}

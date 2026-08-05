@@ -8,7 +8,7 @@ import { Input } from '@/shared/components/ui/input';
 import { Badge } from '@/shared/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
-import { Search, ChevronLeft, ChevronRight, Plus, CalendarCheck } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, ChevronDown, Plus, CalendarCheck } from 'lucide-react';
 import { salonDateTime, salonTodayISO } from '@/shared/lib/salonTime';
 import { listItems } from '@/shared/lib/listResponse';
 import { formatPrice } from '@/shared/lib/currency';
@@ -50,6 +50,7 @@ export default function AppointmentsPage() {
   const [total, setTotal] = useState(0);
   const [currency, setCurrency] = useState('AUD');
   const [salonTz, setSalonTz] = useState(null);
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
 
   const search = (searchParams.get('search') || '').toLowerCase();
   const statusFilter = searchParams.get('status') || 'all';
@@ -118,7 +119,9 @@ export default function AppointmentsPage() {
 
   const filtered = search
     ? appointments.filter(a => {
-        const hay = `${a.pet?.name || ''} ${a.client?.full_name || a.client?.full_name || ''} ${a.service?.name || ''} ${a.staff?.full_name || ''}`.toLowerCase();
+        const lineText = (a.services_list || [])
+          .map(l => `${l.name || ''} ${l.staff_name || ''}`).join(' ');
+        const hay = `${a.pet?.name || ''} ${a.client?.full_name || ''} ${a.service?.name || ''} ${a.staff?.full_name || ''} ${lineText}`.toLowerCase();
         return hay.includes(search);
       })
     : appointments;
@@ -221,6 +224,7 @@ export default function AppointmentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-8" />
                   <TableHead>Pet</TableHead>
                   <TableHead>Client</TableHead>
                   <TableHead>Staff</TableHead>
@@ -233,13 +237,48 @@ export default function AppointmentsPage() {
               <TableBody>
                 {filtered.map(a => {
                   const owner = a.client?.full_name || a.client?.full_name || '-';
+                  const lines = a.services_list || [];
+                  const multi = lines.length > 1;
+                  const isOpen = expandedIds.has(a.id);
+                  // Distinct groomers across all service lines (fall back to
+                  // the appointment-level staff when rows carry none)
+                  const groomerNames = [...new Set(
+                    lines.map(l => l.staff_name).filter(Boolean)
+                  )];
+                  if (groomerNames.length === 0 && a.staff?.full_name) groomerNames.push(a.staff.full_name);
+                  const staffLabel = groomerNames.length > 1
+                    ? `${groomerNames.length} groomers`
+                    : (groomerNames[0] || '-');
+                  const serviceLabel = multi
+                    ? `${lines.length} services`
+                    : (lines[0]?.name || a.service?.name || '-');
+                  const toggleExpand = (e) => {
+                    e.stopPropagation();
+                    setExpandedIds(prev => {
+                      const next = new Set(prev);
+                      if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
+                      return next;
+                    });
+                  };
                   return (
+                    <React.Fragment key={a.id}>
                     <TableRow
-                      key={a.id}
                       data-testid={`appt-row-${a.id}`}
                       className="cursor-pointer hover:bg-slate-50"
                       onClick={() => navigate(`/dashboard/appointments/${a.id}/detail`)}
                     >
+                      <TableCell className="w-8 pr-0">
+                        {multi && (
+                          <button
+                            type="button"
+                            onClick={toggleExpand}
+                            aria-label={isOpen ? 'Collapse services' : 'Expand services'}
+                            className="p-1 rounded hover:bg-slate-200/60 text-slate-500"
+                          >
+                            <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                          </button>
+                        )}
+                      </TableCell>
                       <TableCell className="font-medium text-slate-900">
                         {a.pet?.name || '-'}
                         {a.pet?.species && (
@@ -247,8 +286,8 @@ export default function AppointmentsPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-slate-600">{owner}</TableCell>
-                      <TableCell className="text-slate-600">{a.staff?.full_name || '-'}</TableCell>
-                      <TableCell className="text-slate-600">{a.service?.name || '-'}</TableCell>
+                      <TableCell className="text-slate-600">{staffLabel}</TableCell>
+                      <TableCell className="text-slate-600">{serviceLabel}</TableCell>
                       <TableCell className="text-slate-600">
                         {/* Salon wall-clock time, not the browser's timezone */}
                         {a.start_time ? salonDateTime(a.start_time, salonTz) : '-'}
@@ -278,10 +317,12 @@ export default function AppointmentsPage() {
                               </div>
                             );
                           }
-                          if (a.payment_amount != null) {
+                          const lineSum = lines.reduce((s, l) => s + parseFloat(l.total || 0), 0);
+                          const est = lines.length > 0 ? lineSum : a.payment_amount;
+                          if (est != null) {
                             return (
                               <div>
-                                <div>{formatPrice(a.payment_amount, currency)}</div>
+                                <div>{formatPrice(est, currency)}</div>
                                 <div className="text-[9px] uppercase tracking-wide text-slate-400">
                                   Est
                                 </div>
@@ -292,6 +333,26 @@ export default function AppointmentsPage() {
                         })()}
                       </TableCell>
                     </TableRow>
+                    {multi && isOpen && lines.map(l => (
+                      <TableRow key={l.id} className="bg-slate-50/70 hover:bg-slate-50/70">
+                        <TableCell className="w-8" />
+                        <TableCell colSpan={2} className="py-2 pl-6 text-sm text-slate-700">
+                          <span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-400 mr-2 align-middle" />
+                          {l.name || '-'}
+                        </TableCell>
+                        <TableCell className="py-2 text-sm text-slate-600">{l.staff_name || '-'}</TableCell>
+                        <TableCell className="py-2 text-xs text-slate-500">
+                          {l.duration_minutes ? `${l.duration_minutes} min` : ''}
+                          {l.quantity > 1 ? ` x${l.quantity}` : ''}
+                        </TableCell>
+                        <TableCell />
+                        <TableCell />
+                        <TableCell className="py-2 text-right text-sm text-slate-700">
+                          {formatPrice(l.total, currency)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    </React.Fragment>
                   );
                 })}
               </TableBody>

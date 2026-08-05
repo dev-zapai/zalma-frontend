@@ -29,12 +29,32 @@ const DAYS_OF_WEEK = [
   { idx: 6, label: 'Sun' },
 ];
 
-// Hour/minute options for the Working Hours dropdowns. Hours run 06:00–22:00
-// (the salon operating envelope) in the format the backend expects ("HH:MM").
+// Fallback hour options (06:00-22:00) for the Working Hours dropdowns, used
+// only until the salon's business hours load. The real range is computed
+// from the tenant's business_hours so staff shifts can span whatever the
+// salon actually opens (see salonHourOptions below).
 const HOUR_OPTIONS = Array.from({ length: 17 }, (_, i) => {
   const h = i + 6;
   return { value: String(h).padStart(2, '0'), label: String(h).padStart(2, '0') };
 });
+
+// Hour range spanning the salon's earliest open to latest close across all
+// open days. business_hours shape: { mon..sun: {open, close, closed} }.
+function salonHourOptions(businessHours) {
+  let minH = 24, maxH = -1;
+  Object.values(businessHours || {}).forEach(row => {
+    if (!row || row.closed) return;
+    const o = parseInt(String(row.open || '').split(':')[0], 10);
+    const c = parseInt(String(row.close || '').split(':')[0], 10);
+    if (!isNaN(o)) minH = Math.min(minH, o);
+    if (!isNaN(c)) maxH = Math.max(maxH, c);
+  });
+  if (maxH < 0 || minH > maxH) return HOUR_OPTIONS;
+  return Array.from({ length: maxH - minH + 1 }, (_, i) => {
+    const h = String(minH + i).padStart(2, '0');
+    return { value: h, label: h };
+  });
+}
 const MINUTE_OPTIONS = ['00', '15', '30', '45'].map(m => ({ value: m, label: m }));
 
 /**
@@ -44,9 +64,9 @@ const MINUTE_OPTIONS = ['00', '15', '30', '45'].map(m => ({ value: m, label: m }
  *
  * value: "HH:MM" string. onChange called with the same shape.
  */
-function TimePicker({ value, onChange, disabled }) {
+function TimePicker({ value, onChange, disabled, hourOptions = HOUR_OPTIONS }) {
   const [h, m] = (value || '').split(':');
-  const hour = h && HOUR_OPTIONS.find(o => o.value === h.padStart(2, '0'))?.value;
+  const hour = h && hourOptions.find(o => o.value === h.padStart(2, '0'))?.value;
   const minute = m && MINUTE_OPTIONS.find(o => o.value === m.padStart(2, '0'))?.value;
   return (
     <div className="flex items-center gap-1">
@@ -57,7 +77,7 @@ function TimePicker({ value, onChange, disabled }) {
       >
         <SelectTrigger className="h-8 w-[64px] text-xs"><SelectValue placeholder="HH" /></SelectTrigger>
         <SelectContent className="max-h-60">
-          {HOUR_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+          {hourOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
         </SelectContent>
       </Select>
       <span className="text-slate-400 text-xs">:</span>
@@ -129,6 +149,7 @@ export default function MemberDetailPage() {
   const [apptPage, setApptPage] = useState(0);
   const [kpiRange, setKpiRange] = useState('all');
   const [currency, setCurrency] = useState('AUD');
+  const [salonBizHours, setSalonBizHours] = useState(null);
 
   // Payroll self-service
   const [payslips, setPayslips] = useState([]);
@@ -195,6 +216,7 @@ export default function MemberDetailPage() {
       ]);
       setMember(memberRes.data);
       setCurrency(tenantRes.data?.settings?.currency || 'AUD');
+      setSalonBizHours(tenantRes.data?.business_hours || null);
       setTenantRoles(tenantRes.data?.settings?.roles || [
         { name: 'Groomer', color: '#6366F1' },
         { name: 'Senior Groomer', color: '#7C3AED' },
@@ -1180,11 +1202,13 @@ export default function MemberDetailPage() {
                             <span className="text-xs text-slate-500">From</span>
                             <TimePicker
                               value={row.start || '09:00'}
+                              hourOptions={salonHourOptions(salonBizHours)}
                               onChange={(v) => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], start: v } }))}
                             />
                             <span className="text-xs text-slate-500">To</span>
                             <TimePicker
                               value={row.end || '17:00'}
+                              hourOptions={salonHourOptions(salonBizHours)}
                               onChange={(v) => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], end: v } }))}
                             />
                           </div>
@@ -1197,11 +1221,13 @@ export default function MemberDetailPage() {
                           <span className="text-[11px] text-slate-500 w-12">Break</span>
                           <TimePicker
                             value={row.break_start || ''}
+                            hourOptions={salonHourOptions(salonBizHours)}
                             onChange={(v) => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], break_start: v } }))}
                           />
                           <span className="text-xs text-slate-400">–</span>
                           <TimePicker
                             value={row.break_end || ''}
+                            hourOptions={salonHourOptions(salonBizHours)}
                             onChange={(v) => setSchedule(s => ({ ...s, [d.idx]: { ...s[d.idx], break_end: v } }))}
                           />
                           {(row.break_start || row.break_end) && (

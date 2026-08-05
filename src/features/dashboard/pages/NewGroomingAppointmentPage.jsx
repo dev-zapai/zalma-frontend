@@ -259,9 +259,14 @@ export default function NewGroomingAppointmentPage() {
       let petId = selectedPet?.id;
 
       if (!clientId) {
+        if (!phoneLookup) {
+          toast.error('Phone number is required for a new client');
+          setSaving(false);
+          return;
+        }
         const clientRes = await api.post('/clients', {
           full_name: clientName,
-          phone: phoneLookup || null,
+          phone: phoneLookup,
         });
         clientId = clientRes.data.id;
         // Walk-in style booking: the client completes their profile at
