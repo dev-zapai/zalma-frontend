@@ -247,6 +247,37 @@ export default function NewGroomingAppointmentPage() {
   // start/end, and re-verifies the slot server-side (409 if it was taken).
   // Brand-new clients are provisioned directly via /clients + /pets - the
   // old quick-book placeholder hack billed every new-client booking twice.
+  // Provision a brand-new client (+pet) on the fly. Shared by booking AND
+  // the waitlist flow - both need a real client_id, and a walk-in client
+  // typed into step 1 doesn't have one yet. Returns null (with a toast)
+  // when the phone is missing, since clients require name + phone.
+  const ensureClientAndPet = async () => {
+    let clientId = foundClient?.id;
+    let petId = selectedPet?.id;
+    if (!clientId) {
+      if (!phoneLookup) {
+        toast.error('Phone number is required for a new client');
+        return null;
+      }
+      const clientRes = await api.post('/clients', {
+        full_name: clientName,
+        phone: phoneLookup,
+      });
+      clientId = clientRes.data.id;
+      // Walk-in style: the client completes their profile at check-in
+      await api.put(`/clients/${clientId}`, { registration_status: 'pending' }).catch(() => {});
+      if (petName) {
+        const petRes = await api.post('/pets', {
+          owner_id: clientId,
+          name: petName,
+          species: petSpecies || 'Dog',
+        });
+        petId = petRes.data.id;
+      }
+    }
+    return { clientId, petId };
+  };
+
   const handleBook = async () => {
     if (selectedServices.length === 0 || !selectedSlot) return;
     if (!selectedSlot.allocations?.length) {
@@ -255,32 +286,9 @@ export default function NewGroomingAppointmentPage() {
     }
     setSaving(true);
     try {
-      let clientId = foundClient?.id;
-      let petId = selectedPet?.id;
-
-      if (!clientId) {
-        if (!phoneLookup) {
-          toast.error('Phone number is required for a new client');
-          setSaving(false);
-          return;
-        }
-        const clientRes = await api.post('/clients', {
-          full_name: clientName,
-          phone: phoneLookup,
-        });
-        clientId = clientRes.data.id;
-        // Walk-in style booking: the client completes their profile at
-        // check-in, so mark them pending like quick-book used to.
-        await api.put(`/clients/${clientId}`, { registration_status: 'pending' }).catch(() => {});
-        if (petName) {
-          const petRes = await api.post('/pets', {
-            owner_id: clientId,
-            name: petName,
-            species: petSpecies || 'Dog',
-          });
-          petId = petRes.data.id;
-        }
-      }
+      const ids = await ensureClientAndPet();
+      if (!ids) { setSaving(false); return; }
+      const { clientId, petId } = ids;
 
       const res = await api.post('/g/appointments/multi-book', {
         client_id: clientId,
@@ -795,13 +803,18 @@ export default function NewGroomingAppointmentPage() {
                     <Button
                       size="sm"
                       onClick={() => setWaitlistOpen(true)}
-                      disabled={!foundClient || selectedServices.length === 0}
+                      disabled={!(foundClient || (clientName && phoneLookup)) || selectedServices.length === 0}
                       className="bg-amber-600 hover:bg-amber-700 text-white"
                     >
                       <Hourglass className="h-3.5 w-3.5 mr-1.5" /> Join Waitlist
                     </Button>
-                    {(!foundClient || selectedServices.length === 0) && (
-                      <p className="text-[10px] text-slate-400">Pick client + services first.</p>
+                    {!(foundClient || (clientName && phoneLookup)) && (
+                      <p className="text-[10px] text-slate-400">
+                        {clientName ? 'Add the client\u2019s phone number first (step 1).' : 'Pick client + services first.'}
+                      </p>
+                    )}
+                    {(foundClient || (clientName && phoneLookup)) && selectedServices.length === 0 && (
+                      <p className="text-[10px] text-slate-400">Pick at least one service first.</p>
                     )}
                   </div>
                 ) : (
@@ -904,7 +917,7 @@ export default function NewGroomingAppointmentPage() {
           </DialogHeader>
           <div className="space-y-3 py-2 text-sm">
             <p className="text-slate-500">
-              {foundClient?.full_name ? <strong>{foundClient.full_name}</strong> : 'Client'} for{' '}
+              {(foundClient?.full_name || clientName) ? <strong>{foundClient?.full_name || clientName}</strong> : 'Client'} for{' '}
               {selectedPet?.name && <strong>{selectedPet.name}</strong>} on{' '}
               <strong>{selectedDate}</strong>. When a slot frees up we'll auto-offer it - you have 30 minutes to accept.
             </p>
@@ -940,12 +953,14 @@ export default function NewGroomingAppointmentPage() {
             <Button
               disabled={waitlistSubmitting}
               onClick={async () => {
-                if (!foundClient || selectedServices.length === 0 || !selectedDate) return;
+                if (selectedServices.length === 0 || !selectedDate) return;
                 setWaitlistSubmitting(true);
                 try {
+                  const ids = await ensureClientAndPet();
+                  if (!ids) { setWaitlistSubmitting(false); return; }
                   await api.post('/g/waitlist', {
-                    client_id: foundClient.id,
-                    pet_id: selectedPet?.id || null,
+                    client_id: ids.clientId,
+                    pet_id: ids.petId || null,
                     service_ids: selectedServices,
                     preferred_date: selectedDate,
                     preferred_window: waitlistWindow,

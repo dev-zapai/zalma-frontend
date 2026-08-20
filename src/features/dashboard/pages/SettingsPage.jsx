@@ -160,6 +160,15 @@ export default function SettingsPage() {
     setSaving(false);
   };
 
+  // Inverted hours (close at or before open) silently kill every booking
+  // slot for that day, so block them client-side too. "00:00" as close is
+  // allowed - it means midnight at the end of the day.
+  const dayHoursInvalid = (row) => {
+    if (!row || row.closed || !row.open || !row.close) return false;
+    if (row.close === '00:00') return false;
+    return row.close <= row.open;
+  };
+
   return (
     <div data-testid="settings-page" className="space-y-6 animate-fade-in">
       <div>
@@ -381,8 +390,13 @@ export default function SettingsPage() {
                         value={row.close}
                         disabled={row.closed}
                         onChange={(e) => setHours(h => ({ ...h, [d.key]: { ...h[d.key], close: e.target.value } }))}
-                        className="h-9 text-xs"
+                        className={`h-9 text-xs ${dayHoursInvalid(row) ? 'border-red-400' : ''}`}
                       />
+                      {dayHoursInvalid(row) && (
+                        <p className="col-span-4 text-[11px] text-red-600 -mt-1">
+                          {d.label}: closing time must be after opening time
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -431,6 +445,11 @@ export default function SettingsPage() {
                     onClick={async () => {
                       if (calHourStart >= calHourEnd) {
                         toast.error('The calendar day must end after it starts');
+                        return;
+                      }
+                      const badDay = DAYS.find(d => dayHoursInvalid(hours[d.key]));
+                      if (badDay) {
+                        toast.error(`${badDay.label}: closing time must be after opening time`);
                         return;
                       }
                       setSavingHours(true);
