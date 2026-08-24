@@ -9,7 +9,7 @@ import { Badge } from '@/shared/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Search, ChevronLeft, ChevronRight, ChevronDown, Plus, CalendarCheck } from 'lucide-react';
-import { salonDateTime, salonTodayISO } from '@/shared/lib/salonTime';
+import { salonDateTime, salonTime, salonTodayISO } from '@/shared/lib/salonTime';
 import { listItems } from '@/shared/lib/listResponse';
 import { formatPrice } from '@/shared/lib/currency';
 
@@ -339,6 +339,11 @@ export default function AppointmentsPage() {
                         <TableCell colSpan={2} className="py-2 pl-6 text-sm text-slate-700">
                           <span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-400 mr-2 align-middle" />
                           {l.name || '-'}
+                          {l.start_time && l.end_time && (
+                            <span className="ml-2 text-xs font-medium text-slate-500">
+                              {salonTime(l.start_time, salonTz)} - {salonTime(l.end_time, salonTz)}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="py-2 text-sm text-slate-600">{l.staff_name || '-'}</TableCell>
                         <TableCell className="py-2 text-xs text-slate-500">

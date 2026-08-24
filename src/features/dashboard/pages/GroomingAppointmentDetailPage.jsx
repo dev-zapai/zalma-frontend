@@ -471,6 +471,20 @@ export default function GroomingAppointmentDetailPage() {
     </span>
   );
 
+  // The server rejects a groomer double booking with 409 unless
+  // allow_conflict is sent. Ask the admin, then retry deliberately.
+  const confirmConflictRetry = async (err, retry) => {
+    const detail = err?.response?.data?.detail;
+    if (err?.response?.status === 409 && typeof detail === 'string' && detail.includes('already booked')) {
+      if (window.confirm(`${detail}\n\nBook anyway (double booking)?`)) {
+        await retry();
+        return true;
+      }
+      return true; // handled: user declined, no error toast needed
+    }
+    return false;
+  };
+
   // Mirror of the backend _line_total: percent capped at 100, never negative
   const computeLineTotal = (unitPrice, quantity, dType, dValue) => {
     let gross = Math.round(parseFloat(unitPrice || 0) * (quantity || 1) * 100) / 100;
@@ -513,7 +527,7 @@ export default function GroomingAppointmentDetailPage() {
     }
   };
 
-  const handleAddService = async () => {
+  const handleAddService = async (allowConflict = false) => {
     if (!addServiceId) return;
     try {
       if (addServiceId.startsWith('bundle:')) {
@@ -523,6 +537,7 @@ export default function GroomingAppointmentDetailPage() {
         const res = await api.post(`/g/appointments/${appointmentId}/bundles`, {
           bundle_id: bundleId,
           staff_id: addStaffId || null,
+          allow_conflict: allowConflict,
         });
         setApptServices(prev => [...prev, ...(res.data.services || [])]);
         toast.success(`Bundle added: ${res.data.bundle_name}`);
@@ -537,6 +552,7 @@ export default function GroomingAppointmentDetailPage() {
           unit_price: parseFloat(svc.price),
           quantity: addQty,
           total: parseFloat(svc.price) * addQty,
+          allow_conflict: allowConflict,
         };
         const res = await api.post(`/g/appointments/${appointmentId}/services`, item);
         setApptServices(prev => [...prev, res.data]);
@@ -547,7 +563,11 @@ export default function GroomingAppointmentDetailPage() {
       setAddQty(1);
       // The appointment window auto-extended server-side - refresh header times
       api.get(`/g/appointments/${appointmentId}`).then(r => setAppt(r.data)).catch(() => {});
-    } catch (e) { toast.error(e?.response?.data?.detail || 'Failed to add'); }
+    } catch (e) {
+      const handled = await confirmConflictRetry(e, () => handleAddService(true))
+        .catch(() => { toast.error('Failed to add'); return true; });
+      if (!handled) toast.error(e?.response?.data?.detail || 'Failed to add');
+    }
   };
 
   const handleRemoveService = async (serviceItemId) => {
@@ -1084,14 +1104,22 @@ export default function GroomingAppointmentDetailPage() {
                           <Select
                             value={item.staff_id || ''}
                             onValueChange={async (val) => {
-                              try {
-                                await api.put(`/g/appointments/${appointmentId}/services/${item.id}`, { staff_id: val });
+                              const apply = async (allowConflict) => {
+                                await api.put(`/g/appointments/${appointmentId}/services/${item.id}`,
+                                  allowConflict ? { staff_id: val, allow_conflict: true } : { staff_id: val });
                                 setApptServices(prev => prev.map(s => s.id === item.id
                                   ? { ...s, staff_id: val, staff_name: staffList.find(st => st.id === val)?.full_name }
                                   : s
                                 ));
                                 toast.success('Staff updated');
-                              } catch { toast.error('Failed to update staff'); }
+                              };
+                              try {
+                                await apply(false);
+                              } catch (err) {
+                                const handled = await confirmConflictRetry(err, () => apply(true))
+                                  .catch(() => { toast.error('Failed to update staff'); return true; });
+                                if (!handled) toast.error('Failed to update staff');
+                              }
                             }}
                           >
                             <SelectTrigger className="h-8 text-xs w-[160px]">
@@ -1124,6 +1152,11 @@ export default function GroomingAppointmentDetailPage() {
                       </TableCell>
                       <TableCell className="hidden sm:table-cell text-slate-500">
                         {item.duration_minutes ? `${item.duration_minutes} min` : '-'}
+                        {item.start_time && item.end_time && (
+                          <div className="text-[11px] text-slate-400">
+                            {salonTime(item.start_time, tenant?.timezone)} - {salonTime(item.end_time, tenant?.timezone)}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-slate-600">
                         {formatPrice(item.unit_price, currency)}
