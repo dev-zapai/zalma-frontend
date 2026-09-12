@@ -64,6 +64,7 @@ const PLAN_FALLBACK = {
     included: { sms: 400, email: 500, voice_minutes: 100 },
     features: [
       'Everything in Growth',
+      'Explore map (salon discovery)',
       'Leave / Absence management',
       'Advanced analytics',
       'Partnerships + Transfer bookings + Partner chat',
@@ -87,7 +88,6 @@ const PLAN_FALLBACK = {
     included: { sms: 600, email: 2000, voice_minutes: 150 },
     features: [
       'Everything in Premium',
-      'Explore map (salon discovery)',
       'Custom salon website builder',
       'Birthday greetings + We-miss-you reminders',
       'Client-specific discounts',
@@ -197,12 +197,12 @@ export default function BillingPage() {
     const MIN = { growth: 0, premium: 49, ultimate: 99 };
 
     const lostMap = {
-      growth: 'Leave management, Advanced analytics, Partnerships, Transfers, SMS/Email automations, Marketing campaigns',
-      premium: 'Explore map, Website builder, Birthday greetings, We-miss-you reminders, Client-specific discounts',
+      growth: 'Explore map, Leave management, Advanced analytics, Partnerships, Transfers, SMS/Email automations, Marketing campaigns',
+      premium: 'Website builder, Birthday greetings, We-miss-you reminders, Client-specific discounts',
     };
     const gainMap = {
-      premium: 'Leave management, Advanced analytics, Partnerships, Transfers, Appointment reminders (SMS/Email), Review requests, Rebooking reminders, Marketing campaigns, 400 SMS + 500 emails/month',
-      ultimate: 'Explore map, Website builder, Birthday greetings + We-miss-you + client-specific discounts, 600 SMS + 2,000 emails + 150 AI mins/month',
+      premium: 'Explore map, Leave management, Advanced analytics, Partnerships, Transfers, Appointment reminders (SMS/Email), Review requests, Rebooking reminders, Marketing campaigns, 400 SMS + 500 emails/month',
+      ultimate: 'Website builder, Birthday greetings + We-miss-you + client-specific discounts, 600 SMS + 2,000 emails + 150 AI mins/month',
     };
 
     let msg;

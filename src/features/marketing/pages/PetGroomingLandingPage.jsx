@@ -245,6 +245,7 @@ function PricingSection() {
       description: 'Automate enquiries, rebookings, reminders, reviews',
       features: [
         'Everything in Growth',
+        'Explore map (salon discovery)',
         'Leave / Absence management',
         'Advanced analytics',
         'Partnerships + Transfer bookings + Partner chat',
@@ -267,7 +268,6 @@ function PricingSection() {
       description: 'Turn the salon into a Revenue Engine',
       features: [
         'Everything in Premium',
-        'Explore map (salon discovery)',
         'Custom salon website builder',
         'Birthday greetings + We-miss-you reminders',
         'Client-specific discounts',

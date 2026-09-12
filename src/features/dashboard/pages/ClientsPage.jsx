@@ -36,6 +36,8 @@ export default function ClientsPage() {
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
   // Deep-link filter from Mission Control ("N clients need profile completion")
   const registrationFilter = searchParams.get('registration') || '';
+  // "Booked on <day>": set by the Overview tiles; cleared from the chip.
+  const [bookedOn, setBookedOn] = useState(searchParams.get('booked_on') || '');
 
   // Sort
   const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || 'name');
@@ -73,12 +75,13 @@ export default function ClientsPage() {
       if (statusFilter === 'inactive') params.active = false;
       if (statusFilter === 'archived') params.archived = true;
       if (registrationFilter) params.registration = registrationFilter;
+      if (bookedOn) params.booked_on = bookedOn;
       const res = await api.get('/clients', { params });
       setClients(listItems(res.data));
       if (res.data?.total_pages) setTotalPages(res.data.total_pages);
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, sortBy, sortDir, page]);
+  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, bookedOn, sortBy, sortDir, page]);
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
   useEffect(() => { fetchClients(); }, [fetchClients]);
@@ -94,8 +97,9 @@ export default function ClientsPage() {
     if (sortBy !== 'name') p.set('sort_by', sortBy);
     if (sortDir !== 'asc') p.set('sort_dir', sortDir);
     if (registrationFilter) p.set('registration', registrationFilter);
+    if (bookedOn) p.set('booked_on', bookedOn);
     setSearchParams(p, { replace: true });
-  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, sortBy, sortDir, setSearchParams]);
+  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, bookedOn, sortBy, sortDir, setSearchParams]);
 
   const handleSort = (col) => {
     if (sortBy === col) {
@@ -311,6 +315,12 @@ export default function ClientsPage() {
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {bookedOn && (
+                <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-primary/30 bg-primary/5 text-xs font-medium text-primary">
+                  Booked on {bookedOn}
+                  <button type="button" onClick={() => setBookedOn('')} aria-label="Clear booked-on filter" className="ml-1 text-primary/70 hover:text-primary">×</button>
+                </span>
+              )}
               <Select value={vipFilter} onValueChange={setVipFilter}>
                 <SelectTrigger className="w-[120px] h-9 text-xs">
                   <SelectValue placeholder="VIP" />

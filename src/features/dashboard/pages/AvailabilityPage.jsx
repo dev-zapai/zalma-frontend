@@ -13,7 +13,7 @@ import {
   ChevronLeft, ChevronRight, Clock, Plus, Trash2, Coffee, AlertTriangle,
   Calendar as CalendarIcon, Check,
 } from 'lucide-react';
-import { format, addDays, startOfWeek, parseISO, isSameDay } from 'date-fns';
+import { format, addDays, startOfWeek, parseISO, isSameDay, differenceInCalendarDays } from 'date-fns';
 import { toast } from 'sonner';
 import DatePicker from '@/shared/components/DatePicker';
 import { listItems } from '@/shared/lib/listResponse';
@@ -101,6 +101,26 @@ export default function AvailabilityPage() {
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [weekData, setWeekData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Day view: one date, a column per groomer, every appointment as a block
+  // with pet / service / client. Reuses the week payload (the day is one of
+  // its 7 days) plus the appointments list for the names.
+  const [view, setView] = useState('week');
+  const [selectedDay, setSelectedDay] = useState(new Date());
+  const [dayDetails, setDayDetails] = useState({});
+  useEffect(() => {
+    if (view !== 'day') return;
+    setWeekStart(startOfWeek(selectedDay, { weekStartsOn: 1 }));
+    const d = format(selectedDay, 'yyyy-MM-dd');
+    api.get('/g/appointments', { params: { date_from: d, date_to: d, limit: 200 } })
+      .then(res => {
+        const map = {};
+        (res.data?.items || []).forEach(a => {
+          map[a.id] = { pet: a.pet?.name, owner: a.client?.full_name };
+        });
+        setDayDetails(map);
+      })
+      .catch(() => setDayDetails({}));
+  }, [view, selectedDay]);
   // Gates the first fetch until the profile-based default is resolved, so we
   // never fire an "all staff" request that can land after - and overwrite -
   // the correct single-staff one.
@@ -175,7 +195,7 @@ export default function AvailabilityPage() {
   );
 
   // ─── Render helpers ─────────────────────────────────────────────────────
-  const renderColumn = (staff, day) => {
+  const renderColumn = (staff, day, detailsById) => {
     const blocks = day.blocks || [];
     // Click → jump to the New Appointment flow with this date pre-selected.
     // Editing working hours / overrides happens on the staff member's
@@ -237,7 +257,7 @@ export default function AvailabilityPage() {
         )}
 
         {/* Timed blocks */}
-        {!isOff && blocks.map((b, i) => {
+        {blocks.filter(b => !isOff || b.status === 'booked').map((b, i) => {
           const startMin = clampOffset(hmToOffset(b.start, hourStart), totalMinutes);
           const endMin = clampOffset(hmToOffset(b.end, hourStart), totalMinutes);
           const top = (startMin / 60) * ROW_HEIGHT;
@@ -247,20 +267,35 @@ export default function AvailabilityPage() {
           return (
             <div
               key={i}
-              className={`absolute left-1 right-1.5 rounded-md ${style.bg} ${style.text} text-[10px] overflow-hidden ${b.status === 'booked' ? 'shadow-sm' : ''}`}
+              className={`absolute left-1 right-1.5 rounded-md ${style.bg} ${style.text} text-[10px] overflow-hidden ${b.status === 'booked' ? 'shadow-sm cursor-pointer hover:brightness-95' : ''}`}
               style={{
                 top: `${top + 1}px`,
                 height: `${height}px`,
                 borderLeft: `3px solid ${style.accent}`,
               }}
-              title={`${style.label} · ${fmtHM(b.start)}–${fmtHM(b.end)}`}
+              title={b.status === 'booked' && b.appointment_id
+                ? `Open appointment · ${fmtHM(b.start)}–${fmtHM(b.end)}`
+                : `${style.label} · ${fmtHM(b.start)}–${fmtHM(b.end)}`}
+              onClick={(e) => {
+                // A booked block opens THAT appointment; the day column's
+                // own click (new booking) must not fire underneath it.
+                if (b.status === 'booked' && b.appointment_id) {
+                  e.stopPropagation();
+                  navigate(`/dashboard/appointments/${b.appointment_id}/detail`);
+                }
+              }}
             >
-              {showText && (
-                <div className="px-1.5 py-1 leading-tight">
-                  <p className="font-semibold truncate">{style.label}</p>
-                  <p className="opacity-70 truncate tabular-nums">{fmtHM(b.start)}–{fmtHM(b.end)}</p>
-                </div>
-              )}
+              {showText && (() => {
+                const info = b.status === 'booked' && detailsById ? detailsById[b.appointment_id] : null;
+                return (
+                  <div className="px-1.5 py-1 leading-tight">
+                    <p className="font-semibold truncate">
+                      {info ? [info.pet, info.owner].filter(Boolean).join(' · ') || style.label : style.label}
+                    </p>
+                    <p className="opacity-70 truncate tabular-nums">{fmtHM(b.start)}–{fmtHM(b.end)}</p>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -332,9 +367,23 @@ export default function AvailabilityPage() {
       <Card className="rounded-xl border-slate-200/60 overflow-hidden">
         <CardHeader className="pb-3 flex-row items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-lg">
-            {format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d, yyyy')}
+            {view === 'day'
+              ? format(selectedDay, 'EEEE, MMM d, yyyy')
+              : <>{format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d, yyyy')}</>}
           </CardTitle>
           <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex rounded-md border border-slate-200 overflow-hidden">
+              {['week', 'day'].map(v => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  className={`px-3 h-9 text-xs font-medium capitalize ${view === v ? 'bg-primary text-primary-foreground' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
             {/*
               Native date input - opens the OS calendar picker. Selecting any
               date snaps the view to that date's Monday so we always render a
@@ -342,17 +391,31 @@ export default function AvailabilityPage() {
             */}
             <div className="relative">
               <DatePicker
-                value={format(weekStart, 'yyyy-MM-dd')}
+                value={format(view === 'day' ? selectedDay : weekStart, 'yyyy-MM-dd')}
                 onChange={(v) => {
                   if (!v) return;
                   const picked = new Date(v + 'T00:00:00');
                   if (isNaN(picked.getTime())) return;
-                  setWeekStart(startOfWeek(picked, { weekStartsOn: 1 }));
+                  if (view === 'day') setSelectedDay(picked);
+                  else setWeekStart(startOfWeek(picked, { weekStartsOn: 1 }));
                 }}
                 clearable={false}
                 className="h-9 text-xs w-[170px]"
               />
             </div>
+            {view === 'day' ? (
+              <div className="flex gap-1">
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setSelectedDay(addDays(selectedDay, -1))} title="Previous day">
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="outline" size="sm" className="h-9" onClick={() => setSelectedDay(new Date())}>
+                  Today
+                </Button>
+                <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setSelectedDay(addDays(selectedDay, 1))} title="Next day">
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
             <div className="flex gap-1">
               <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setWeekStart(addDays(weekStart, -7))} title="Previous week">
                 <ChevronLeft className="h-4 w-4" />
@@ -364,6 +427,7 @@ export default function AvailabilityPage() {
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -376,7 +440,68 @@ export default function AvailabilityPage() {
               <CalendarIcon className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p className="text-sm">No staff to display</p>
             </div>
-          ) : (
+          ) : view === 'day' ? (() => {
+            const dayIdx = Math.min(6, Math.max(0, differenceInCalendarDays(selectedDay, weekStart)));
+            const cols = weekData.staff.length;
+            const today = isSameDay(selectedDay, new Date());
+            return (
+              <div className="p-4 overflow-x-auto">
+                <div className="rounded-lg border border-slate-200/80 overflow-hidden" style={{ minWidth: `${60 + cols * 180}px` }}>
+                  {/* Groomer header row */}
+                  <div className="grid border-b border-slate-200 bg-slate-50/60" style={{ gridTemplateColumns: `60px repeat(${cols}, 1fr)` }}>
+                    <div className="py-2 text-center">
+                      <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-semibold ${today ? 'bg-primary text-primary-foreground shadow-sm' : 'text-slate-900'}`}>
+                        {format(selectedDay, 'd')}
+                      </span>
+                    </div>
+                    {weekData.staff.map(staff => {
+                      const day = staff.days[dayIdx];
+                      const mins = (day?.blocks || []).reduce((acc, b) => {
+                        const m = Math.max(0, clampOffset(hmToOffset(b.end, hourStart), totalMinutes) - clampOffset(hmToOffset(b.start, hourStart), totalMinutes));
+                        if (b.status === 'booked') acc.booked += m;
+                        else if (b.status === 'available') acc.free += m;
+                        return acc;
+                      }, { free: 0, booked: 0 });
+                      return (
+                        <div key={staff.id} className="py-2 px-2 border-l border-slate-200/60 flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ring-2 ring-white shadow-sm" style={{ backgroundColor: staff.color }}>
+                            {staff.full_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-900 truncate">
+                              {staff.full_name}
+                              {staff.inactive && <span className="ml-1.5 text-[10px] font-medium text-slate-400">inactive</span>}
+                            </p>
+                            <p className="text-[10px] text-slate-400 tabular-nums">
+                              {Math.round(mins.free / 60)}h free · {Math.round(mins.booked / 60 * 10) / 10}h booked
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Hours + one column per groomer */}
+                  <div className="grid relative bg-white" style={{ gridTemplateColumns: `60px repeat(${cols}, 1fr)` }}>
+                    <div className="relative bg-slate-50/40" style={{ height: `${(hourEnd - hourStart) * ROW_HEIGHT}px` }}>
+                      {hoursList.map((h, i) => {
+                        const label = h === 12 ? '12pm' : h < 12 ? `${h}am` : `${h - 12}pm`;
+                        return (
+                          <div key={h} className="absolute right-2 text-[10px] text-slate-400 tabular-nums -translate-y-1/2 select-none" style={{ top: `${i * ROW_HEIGHT}px` }}>
+                            {i > 0 && label}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {weekData.staff.map(staff => (
+                      <React.Fragment key={staff.id}>
+                        {renderColumn(staff, staff.days[dayIdx], dayDetails)}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })() : (
             <div className="space-y-8 p-4">
               {weekData.staff.map(staff => {
                 const summary = weekSummary(staff, hourStart, totalMinutes);
@@ -390,7 +515,12 @@ export default function AvailabilityPage() {
                     >
                       {staff.full_name.charAt(0).toUpperCase()}
                     </div>
-                    <p className="text-sm font-semibold text-slate-900">{staff.full_name}</p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {staff.full_name}
+                      {staff.inactive && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-500 align-middle">inactive</span>
+                      )}
+                    </p>
                     {summary.hasAny && (
                       <div className="flex items-center gap-1.5 ml-1">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium ${STATUS_STYLES.available.chip}`}>

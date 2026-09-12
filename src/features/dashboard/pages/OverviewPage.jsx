@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/shared/lib/api';
+import { tileLinks } from '@/features/dashboard/lib/tileLinks';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import {
@@ -117,6 +118,7 @@ export default function OverviewPage() {
   // richer per-staff metrics + period selection.
   const { layer1, layer2, notifications } = data;
   const sb = layer1?.status_breakdown || {};
+  const links = tileLinks(layer1?.today);
 
   const layer1Cards = [
     {
@@ -133,7 +135,7 @@ export default function OverviewPage() {
       icon: Users,
       color: 'text-emerald-600',
       bg: 'bg-emerald-50/80',
-      link: '/dashboard/clients',
+      link: links.clients,
     },
     {
       label: "Today's Pets",
@@ -141,7 +143,7 @@ export default function OverviewPage() {
       icon: PawPrint,
       color: 'text-violet-600',
       bg: 'bg-violet-50',
-      link: '/dashboard/pets',
+      link: links.pets,
     },
     {
       label: 'Projected Revenue',
@@ -151,7 +153,7 @@ export default function OverviewPage() {
       icon: DollarSign,
       color: 'text-primary',
       bg: 'bg-primary/10',
-      link: '/dashboard/analytics',
+      link: links.revenue,
       sub: layer1.completed_revenue > 0
         ? `${formatPrice(layer1.completed_revenue, currency)} earned`
         : null,

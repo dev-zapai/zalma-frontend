@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import api from '@/shared/lib/api';
 import DatePicker from '@/shared/components/DatePicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
@@ -29,8 +29,14 @@ export default function AnalyticsPage() {
   // Single analytics window shared by every tab: a preset rolling window in
   // days OR an explicit custom range. Lives here (top of page) and is passed
   // down to each sub-tab so there is exactly one filter for the whole screen.
+  const [searchParams] = useSearchParams();
   const [days, setDays] = useState(30);
-  const [customRange, setCustomRange] = useState(null);
+  // A deep link (e.g. the Overview revenue tile) can preset the window.
+  const [customRange, setCustomRange] = useState(() => {
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
+    return from && to ? { from, to } : null;
+  });
 
   // Fetch currency once
   useEffect(() => {

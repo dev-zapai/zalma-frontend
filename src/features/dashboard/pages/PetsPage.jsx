@@ -68,6 +68,8 @@ export default function PetsPage() {
   const [newPetFilter, setNewPetFilter] = useState(searchParams.get('new_pet') || 'all');
   const [desexedFilter, setDesexedFilter] = useState(searchParams.get('desexed') || 'all');
   const [vaccinationFilter, setVaccinationFilter] = useState(searchParams.get('vaccination') || 'all');
+  // "Booked on <day>": set by the Overview tiles; cleared from the chip.
+  const [bookedOn, setBookedOn] = useState(searchParams.get('booked_on') || '');
 
   // Sort
   const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || 'name');
@@ -95,12 +97,13 @@ export default function PetsPage() {
       if (desexedFilter === 'not_desexed') params.desexed = 'false';
       if (vaccinationFilter === 'expired') params.vaccination_expired = 'true';
       if (vaccinationFilter === 'up_to_date') params.vaccination_expired = 'false';
+      if (bookedOn) params.booked_on = bookedOn;
       const res = await api.get('/pets', { params });
       setPets(listItems(res.data));
       if (res.data?.total_pages) setTotalPages(res.data.total_pages);
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, [search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, sortBy, sortDir, page]);
+  }, [search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, bookedOn, sortBy, sortDir, page]);
 
   const fetchClients = useCallback(async () => {
     try {
@@ -124,8 +127,9 @@ export default function PetsPage() {
     if (vaccinationFilter !== 'all') p.set('vaccination', vaccinationFilter);
     if (sortBy !== 'name') p.set('sort_by', sortBy);
     if (sortDir !== 'asc') p.set('sort_dir', sortDir);
+    if (bookedOn) p.set('booked_on', bookedOn);
     setSearchParams(p, { replace: true });
-  }, [search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, sortBy, sortDir, setSearchParams]);
+  }, [search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, bookedOn, sortBy, sortDir, setSearchParams]);
 
   const handleSort = (col) => {
     if (sortBy === col) {
@@ -247,6 +251,12 @@ export default function PetsPage() {
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {bookedOn && (
+                <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full border border-primary/30 bg-primary/5 text-xs font-medium text-primary">
+                  Booked on {bookedOn}
+                  <button type="button" onClick={() => setBookedOn('')} aria-label="Clear booked-on filter" className="ml-1 text-primary/70 hover:text-primary">×</button>
+                </span>
+              )}
               <Select value={speciesFilter} onValueChange={setSpeciesFilter}>
                 <SelectTrigger className="w-[140px] h-9 text-xs">
                   <SelectValue placeholder="Species" />
