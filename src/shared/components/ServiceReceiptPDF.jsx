@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
 import { format, parseISO } from 'date-fns';
 import { getCurrencySymbol } from '@/shared/lib/currency';
+import { paymentMethodLabel, paymentHeading } from '@/shared/lib/receiptLabels';
 
 const styles = StyleSheet.create({
   page: { padding: 40, fontSize: 10, fontFamily: 'Helvetica', color: '#1e293b', backgroundColor: '#ffffff' },
@@ -100,10 +101,7 @@ export default function ServiceReceiptPDF({ receipt, appointment, apptServices, 
 
   const addressParts = [tenant?.address, tenant?.city, tenant?.state, tenant?.country].filter(Boolean);
 
-  const paymentMethodDisplay = {
-    cash: 'Cash', card: 'Credit / Debit Card', upi: 'UPI', bank_transfer: 'Bank Transfer',
-    online: 'Online Payment', other: 'Other',
-  }[receipt?.payment_method] || receipt?.payment_method || '-';
+  const paymentMethodDisplay = paymentMethodLabel(receipt?.payment_method);
 
   return (
     <Document>
@@ -243,16 +241,17 @@ export default function ServiceReceiptPDF({ receipt, appointment, apptServices, 
             <Text style={styles.totalLabel}>Subtotal</Text>
             <Text style={styles.totalValue}>{formatAmt(receipt?.subtotal, sym)}</Text>
           </View>
-          {parseFloat(receipt?.tax_rate) > 0 && (
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Tax ({receipt?.tax_rate}%)</Text>
-              <Text style={styles.totalValue}>{formatAmt(receipt?.tax_amount, sym)}</Text>
-            </View>
-          )}
+          {/* Discount before tax: tax is charged on the discounted amount */}
           {parseFloat(receipt?.discount_amount) > 0 && (
             <View style={styles.totalRow}>
               <Text style={[styles.totalLabel, { color: '#16a34a' }]}>Discount</Text>
               <Text style={[styles.totalValue, { color: '#16a34a' }]}>- {formatAmt(receipt?.discount_amount, sym)}</Text>
+            </View>
+          )}
+          {parseFloat(receipt?.tax_rate) > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Tax ({receipt?.tax_rate}%)</Text>
+              <Text style={styles.totalValue}>{formatAmt(receipt?.tax_amount, sym)}</Text>
             </View>
           )}
           <View style={styles.grandTotalRow}>
@@ -263,7 +262,7 @@ export default function ServiceReceiptPDF({ receipt, appointment, apptServices, 
 
         {/* ── PAYMENT ── */}
         <View style={styles.paymentBox}>
-          <Text style={styles.paymentLabel}>Paid by:</Text>
+          <Text style={styles.paymentLabel}>{paymentHeading(receipt?.payment_status)}</Text>
           <Text style={styles.paymentValue}>{paymentMethodDisplay}</Text>
           {receipt?.notes && (
             <Text style={[styles.paymentLabel, { marginLeft: 12 }]}>Note: {receipt.notes}</Text>

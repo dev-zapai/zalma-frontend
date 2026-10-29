@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/components/ui
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/shared/components/ui/dialog';
 import { Hourglass, Check, X, Clock, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { listItems } from '@/shared/lib/listResponse';
+import { listItems, listMeta } from '@/shared/lib/listResponse';
 
 const STATUS_COLORS = {
   waiting: 'bg-slate-100 text-slate-700',
@@ -37,13 +37,25 @@ export default function WaitlistPage() {
   const [offerStart, setOfferStart] = useState('');
   const [offerEnd, setOfferEnd] = useState('');
 
+  const [nextCursor, setNextCursor] = useState(null);
   const fetchEntries = async (status) => {
     setLoading(true);
     try {
-      const res = await api.get('/g/waitlist', { params: { status } });
+      const res = await api.get('/g/waitlist', { params: { status, limit: 50 } });
       setEntries(listItems(res.data));
+      setNextCursor(listMeta(res.data).nextCursor);
     } catch { toast.error('Failed to load waitlist'); }
     setLoading(false);
+  };
+
+  // Fix 05: the waitlist pages by cursor instead of loading every entry.
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    try {
+      const res = await api.get('/g/waitlist', { params: { status: tab, limit: 50, cursor: nextCursor } });
+      setEntries(prev => [...prev, ...listItems(res.data)]);
+      setNextCursor(listMeta(res.data).nextCursor);
+    } catch { toast.error('Failed to load more'); }
   };
 
   useEffect(() => { fetchEntries(tab); }, [tab]);
@@ -61,8 +73,11 @@ export default function WaitlistPage() {
   const handleDecline = async (entryId) => {
     if (!window.confirm('Decline this offer and cascade to next waitlist entry?')) return;
     try {
-      await api.post(`/g/waitlist/${entryId}/decline`);
-      toast.success('Offer declined - next entry notified');
+      const res = await api.post(`/g/waitlist/${entryId}/decline`);
+      // bug waitlist_decline_toast_claims_notified: say what actually happened
+      toast.success(res?.data?.offered_to
+        ? 'Offer declined. The slot was offered to the next matching entry.'
+        : 'Offer declined. No other entry matches this slot.');
       fetchEntries(tab);
     } catch (e) { toast.error(e.response?.data?.detail || 'Decline failed'); }
   };
@@ -97,7 +112,8 @@ export default function WaitlistPage() {
         slot_start: new Date(offerStart).toISOString(),
         slot_end: new Date(offerEnd).toISOString(),
       });
-      toast.success('Offer sent');
+      // bug waitlist_send_offer_sends_nothing: nothing messages the client yet
+      toast.success('Offer recorded. Contact the client: it expires in 30 minutes.');
       setOfferDialog(null);
       fetchEntries(tab);
     } catch (e) { toast.error(e.response?.data?.detail || 'Offer failed'); }
@@ -165,6 +181,12 @@ export default function WaitlistPage() {
                         {e.flexibility_days > 0 && (
                           <span>± {e.flexibility_days}d</span>
                         )}
+                        {e.status === 'offered' && e.offered_slot_start && (
+                          // bug waitlist_offered_card_hides_slot: staff accept on the phone, so say which slot
+                          <span className="text-slate-700 font-medium flex items-center gap-1" data-testid={`offered-slot-${e.id}`}>
+                            Offered {new Date(e.offered_slot_start).toLocaleString()}
+                          </span>
+                        )}
                         {e.status === 'offered' && e.offer_expires_at && (
                           <span className="text-amber-600 flex items-center gap-1">
                             <AlertCircle className="h-3 w-3" />
@@ -203,6 +225,11 @@ export default function WaitlistPage() {
                   </CardContent>
                 </Card>
               ))}
+              {nextCursor && (
+                <div className="py-3 text-center">
+                  <Button variant="outline" size="sm" onClick={loadMore}>Load more</Button>
+                </div>
+              )}
             </div>
           )}
         </TabsContent>

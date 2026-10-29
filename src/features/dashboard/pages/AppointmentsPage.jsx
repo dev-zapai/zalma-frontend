@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { Search, ChevronLeft, ChevronRight, ChevronDown, Plus, CalendarCheck } from 'lucide-react';
 import { salonDateTime, salonTime, salonTodayISO } from '@/shared/lib/salonTime';
-import { listItems } from '@/shared/lib/listResponse';
+import { listItems, listMeta } from '@/shared/lib/listResponse';
+import { useCursorPager } from '@/shared/hooks/useCursorPager';
 import { formatPrice } from '@/shared/lib/currency';
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
@@ -45,12 +46,24 @@ export default function AppointmentsPage() {
   const [appointments, setAppointments] = useState([]);
   const [staffMembers, setStaffMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null);
   const [currency, setCurrency] = useState('AUD');
   const [salonTz, setSalonTz] = useState(null);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
+  // Fix 02: the list no longer carries service lines; they load when a row is expanded.
+  const [linesById, setLinesById] = useState({});
+  const loadLines = useCallback(async (id) => {
+    if (linesById[id]) return;
+    try {
+      const res = await api.get(`/g/appointments/${id}/services`);
+      setLinesById(prev => ({ ...prev, [id]: listItems(res.data) }));
+    } catch (e) {
+      console.error(e);
+      setLinesById(prev => ({ ...prev, [id]: [] }));
+    }
+  }, [linesById]);
 
   const search = (searchParams.get('search') || '').toLowerCase();
   const statusFilter = searchParams.get('status') || 'all';
@@ -82,10 +95,16 @@ export default function AppointmentsPage() {
   // and latest-first when browsing all dates.
   const sortDir = searchParams.get('sort') || (dateFilter === 'all' ? 'desc' : 'asc');
 
+  // Cursor paging (fix 01): any filter, sort, date or page-size change resets to page 1.
+  const pager = useCursorPager({
+    filterKey: `${statusFilter}|${staffFilter}|${effectiveDate}|${sortDir}|${pageSize}`,
+  });
+
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page, limit: pageSize };
+      const params = { limit: pageSize };
+      if (pager.cursor) params.cursor = pager.cursor;
       if (statusFilter !== 'all') params.status = statusFilter;
       if (staffFilter !== 'all') params.staff_id = staffFilter;
       if (effectiveDate) {
@@ -94,16 +113,19 @@ export default function AppointmentsPage() {
       }
       params.sort = sortDir;
       const res = await api.get('/g/appointments', { params });
-      setAppointments(res.data.items || []);
-      setTotal(res.data.total || 0);
+      const meta = listMeta(res.data);
+      setAppointments(listItems(res.data));
+      setHasMore(meta.hasMore);
+      setNextCursor(meta.nextCursor);
     } catch (err) {
       console.error(err);
       setAppointments([]);
-      setTotal(0);
+      setHasMore(false);
+      setNextCursor(null);
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter, staffFilter, effectiveDate, sortDir]);
+  }, [pager.cursor, pageSize, statusFilter, staffFilter, effectiveDate, sortDir]);
 
   useEffect(() => {
     fetchAppointments();
@@ -111,10 +133,10 @@ export default function AppointmentsPage() {
 
   const updateParam = (key, value) => {
     const next = new URLSearchParams(searchParams);
+    next.delete('cursor');                       // a filter change restarts paging
     if (value && value !== 'all' && value !== '') next.set(key, value);
     else next.delete(key);
     setSearchParams(next);
-    setPage(1);
   };
 
   const filtered = search
@@ -126,7 +148,6 @@ export default function AppointmentsPage() {
       })
     : appointments;
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div data-testid="appointments-page" className="space-y-6 animate-fade-in">
@@ -193,7 +214,6 @@ export default function AppointmentsPage() {
                 if (v) next.set('date', v);
                 else next.set('date', 'all');
                 setSearchParams(next);
-                setPage(1);
               }}
               placeholder="All dates"
               data-testid="date-filter"
@@ -210,7 +230,9 @@ export default function AppointmentsPage() {
           ) : filtered.length === 0 ? (
             <div className="py-16 text-center">
               <CalendarCheck className="h-12 w-12 mx-auto text-slate-300 mb-3" />
-              <p className="text-sm text-slate-400">No appointments found</p>
+              <p className="text-sm text-slate-400">
+                {hasMore ? 'Nothing on this page matches the filters. Use Next to keep looking.' : 'No appointments found'}
+              </p>
               <Button
                 variant="outline"
                 size="sm"
@@ -237,8 +259,9 @@ export default function AppointmentsPage() {
               <TableBody>
                 {filtered.map(a => {
                   const owner = a.client?.full_name || a.client?.full_name || '-';
-                  const lines = a.services_list || [];
-                  const multi = lines.length > 1;
+                  const lines = linesById[a.id] || a.services_list || [];
+                  const lineCount = a.services_count != null ? a.services_count : lines.length;
+                  const multi = lineCount > 1;
                   const isOpen = expandedIds.has(a.id);
                   // Distinct groomers across all service lines (fall back to
                   // the appointment-level staff when rows carry none)
@@ -250,10 +273,11 @@ export default function AppointmentsPage() {
                     ? `${groomerNames.length} groomers`
                     : (groomerNames[0] || '-');
                   const serviceLabel = multi
-                    ? `${lines.length} services`
+                    ? `${lineCount} services`
                     : (lines[0]?.name || a.service?.name || '-');
                   const toggleExpand = (e) => {
                     e.stopPropagation();
+                    if (!expandedIds.has(a.id)) loadLines(a.id);
                     setExpandedIds(prev => {
                       const next = new Set(prev);
                       if (next.has(a.id)) next.delete(a.id); else next.add(a.id);
@@ -308,17 +332,27 @@ export default function AppointmentsPage() {
                         */}
                         {(() => {
                           if (a.receipt_total != null) {
+                            // bug list_paid_label: say what the receipt says, not "Paid" for every receipt
+                            const pay = (a.receipt?.payment_status || a.receipt_payment_status || '').toLowerCase();
+                            const label = pay === 'paid' ? 'Paid'
+                              : pay === 'refunded' ? 'Refunded'
+                              : pay === 'partial' ? 'Part paid'
+                              : pay ? 'Payment pending' : 'Billed';
+                            const tone = pay === 'paid' ? 'text-green-600' : pay === 'refunded' ? 'text-slate-500' : 'text-amber-600';
                             return (
                               <div>
                                 <div>{formatPrice(a.receipt_total, currency)}</div>
-                                <div className="text-[9px] uppercase tracking-wide text-green-600 font-semibold">
-                                  Paid
+                                <div className={`text-[9px] uppercase tracking-wide font-semibold ${tone}`}>
+                                  {label}
                                 </div>
                               </div>
                             );
                           }
+                          // services_total is kept on the appointment by the backend (fix 02)
                           const lineSum = lines.reduce((s, l) => s + parseFloat(l.total || 0), 0);
-                          const est = lines.length > 0 ? lineSum : a.payment_amount;
+                          const est = a.services_count > 0 && a.services_total != null
+                            ? a.services_total
+                            : (lines.length > 0 ? lineSum : a.payment_amount);
                           if (est != null) {
                             return (
                               <div>
@@ -333,6 +367,12 @@ export default function AppointmentsPage() {
                         })()}
                       </TableCell>
                     </TableRow>
+                    {multi && isOpen && lines.length === 0 && (
+                      <TableRow className="bg-slate-50/70">
+                        <TableCell className="w-8" />
+                        <TableCell colSpan={7} className="py-2 pl-6 text-xs text-slate-400">Loading services...</TableCell>
+                      </TableRow>
+                    )}
                     {multi && isOpen && lines.map(l => (
                       <TableRow key={l.id} className="bg-slate-50/70 hover:bg-slate-50/70">
                         <TableCell className="w-8" />
@@ -367,13 +407,13 @@ export default function AppointmentsPage() {
       </Card>
 
       {/* Pagination */}
-      {total > 0 && (
+      {(appointments.length > 0 || pager.canPrev) && (
         <div className="flex items-center justify-between text-sm text-slate-500">
           <div className="flex items-center gap-3">
-            <span>Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}</span>
+            <span>{appointments.length} on this page</span>
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-slate-400">Per page:</span>
-              <Select value={String(pageSize)} onValueChange={v => { setPageSize(Number(v)); setPage(1); }}>
+              <Select value={String(pageSize)} onValueChange={v => setPageSize(Number(v))}>
                 <SelectTrigger className="h-8 w-[70px] text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -389,17 +429,17 @@ export default function AppointmentsPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={page <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={!pager.canPrev || loading}
+              onClick={pager.prev}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span>Page {page} / {totalPages}</span>
+            <span>Page {pager.pageNumber}</span>
             <Button
               size="sm"
               variant="outline"
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
+              disabled={!hasMore || loading}
+              onClick={() => pager.next(nextCursor)}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

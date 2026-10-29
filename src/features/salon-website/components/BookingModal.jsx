@@ -82,7 +82,9 @@ export default function BookingModal({ slug, site, preselectedServiceId, onClose
       setSelectedSlot(null);
       try {
         const duration = totalDuration || 30;
-        const res = await publicApi.get(`/site/${slug}/slots?date=${selectedDate}&duration=${duration}`);
+        // only groomers who can do the chosen services (bug public_slots_ignore_service_capability)
+        const ids = (selectedServiceIds || []).filter(Boolean).join(',');
+        const res = await publicApi.get(`/site/${slug}/slots?date=${selectedDate}&duration=${duration}${ids ? `&service_ids=${encodeURIComponent(ids)}` : ''}`);
         setSlots(res.data || []);
       } catch (e) {
         setSlots([]);
@@ -90,7 +92,7 @@ export default function BookingModal({ slug, site, preselectedServiceId, onClose
       setLoadingSlots(false);
     };
     fetchSlots();
-  }, [selectedDate, step, slug, totalDuration]);
+  }, [selectedDate, step, slug, totalDuration, selectedServiceIds]);
 
   // Generate calendar dates (next 30 days)
   const generateDates = () => {
@@ -99,8 +101,11 @@ export default function BookingModal({ slug, site, preselectedServiceId, onClose
     for (let i = 0; i < 30; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
+      // The tile's value is the date its label shows: the local calendar day,
+      // not the UTC one (bug public_widget_date_tiles_utc, a day off before 11:00 in Melbourne).
+      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       dates.push({
-        value: d.toISOString().split('T')[0],
+        value: local,
         day: d.toLocaleDateString('en-US', { weekday: 'short' }),
         date: d.getDate(),
         month: d.toLocaleDateString('en-US', { month: 'short' }),

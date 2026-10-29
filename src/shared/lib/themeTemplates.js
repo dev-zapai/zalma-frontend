@@ -14,7 +14,7 @@ export const THEME_TEMPLATES = {
   luxe: {
     id: 'luxe',
     name: 'Luxe',
-    description: 'Noir Magazine — Dark & Dramatic',
+    description: 'Noir Magazine: Dark & Dramatic',
     preview: 'Full-black background, gold hairline accents, Playfair Display, zero border radius',
     fonts: {
       heading: "'Playfair Display', 'Georgia', serif",
@@ -71,7 +71,7 @@ export const THEME_TEMPLATES = {
   playful: {
     id: 'playful',
     name: 'Playful',
-    description: 'Gen Z Neon — Bold & Electric',
+    description: 'Gen Z Neon: Bold & Electric',
     preview: 'Hot pink #ff006e + purple neon, Nunito font, 40px rounded cards, neon glow shadows',
     fonts: {
       heading: "'Nunito', 'Nunito Sans', sans-serif",
@@ -135,7 +135,7 @@ export const THEME_TEMPLATES = {
   clean: {
     id: 'clean',
     name: 'Clean',
-    description: 'SaaS Minimal — Modern & Precise',
+    description: 'SaaS Minimal: Modern & Precise',
     preview: 'Purple #742fe5, frosted glass navbar, stat strip hero, Inter font, 16px radius cards',
     fonts: {
       heading: "'Inter', 'Helvetica Neue', sans-serif",
@@ -192,7 +192,7 @@ export const THEME_TEMPLATES = {
   warm: {
     id: 'warm',
     name: 'Warm',
-    description: 'Botanical Cottagecore — Artisan & Cozy',
+    description: 'Botanical Cottagecore: Artisan & Cozy',
     preview: 'Amber #8d4b00 + forest green, cream #fff8f0 bg, Public Sans, organic blob shapes',
     fonts: {
       heading: "'Public Sans', 'DM Sans', sans-serif",

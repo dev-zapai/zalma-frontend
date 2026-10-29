@@ -167,6 +167,8 @@ export default function OverviewPage() {
   // looked like it had vanished from the funnel.
   const statusCards = [
     { key: 'scheduled', label: 'Scheduled', color: 'text-blue-600', bg: 'bg-blue-50' },
+    // bug overview_funnel_missing_confirmed: confirmed bookings vanished from the funnel
+    { key: 'confirmed', label: 'Confirmed', color: 'text-sky-700', bg: 'bg-sky-50' },
     { key: 'checked_in', label: 'Checked In', color: 'text-teal-600', bg: 'bg-teal-50' },
     { key: 'in_progress', label: 'In Progress', color: 'text-orange-600', bg: 'bg-orange-50' },
     { key: 'completed', label: 'Completed', color: 'text-green-600', bg: 'bg-green-50' },
@@ -287,10 +289,10 @@ export default function OverviewPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-lg font-semibold text-slate-900">
-                        {layer2.next_up.pet?.name || layer2.next_up.client?.full_name || 'Appointment'}
+                        {layer2.next_up.pet?.name || (layer2.next_up.client || layer2.next_up.patient)?.full_name || 'Appointment'}
                       </p>
                       <p className="text-sm text-slate-500">
-                        Owner: {layer2.next_up.client?.full_name || '-'}
+                        Owner: {(layer2.next_up.client || layer2.next_up.patient)?.full_name || '-'}
                       </p>
                     </div>
                     <div className="text-right">
@@ -374,7 +376,7 @@ export default function OverviewPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-slate-900">{item.label}</p>
                           <p className="text-xs text-slate-500 truncate">
-                            {item.appointment.pet?.name || item.appointment.client?.full_name || '-'}
+                            {item.appointment.pet?.name || (item.appointment.client || item.appointment.patient)?.full_name || '-'}
                             {item.appointment.start_time && ` · ${format(parseISO(item.appointment.start_time), 'h:mm a')}`}
                           </p>
                         </div>

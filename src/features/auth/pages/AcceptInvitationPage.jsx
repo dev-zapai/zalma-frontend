@@ -91,7 +91,7 @@ export default function AcceptInvitationPage() {
               <CardHeader className="text-center">
                 <CardTitle className="text-2xl">Welcome, {invitation.full_name}!</CardTitle>
                 <CardDescription>
-                  You've been invited to join <span className="font-semibold text-slate-700">{invitation.salon_name}</span> as a <span className="font-semibold text-primary capitalize">{invitation.role}</span>.
+                  You've been invited to join <span className="font-semibold text-slate-700">{invitation.business_name || invitation.salon_name}</span> as a <span className="font-semibold text-primary capitalize">{invitation.role}</span>.
                 </CardDescription>
               </CardHeader>
               <CardContent>

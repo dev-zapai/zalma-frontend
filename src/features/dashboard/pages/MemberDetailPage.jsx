@@ -20,7 +20,7 @@ import {
 import { format, parseISO, subDays, subYears } from 'date-fns';
 import { toast } from 'sonner';
 import DatePicker from '@/shared/components/DatePicker';
-import { listItems } from '@/shared/lib/listResponse';
+import { listItems, fetchAllPages } from '@/shared/lib/listResponse';
 import { formatPrice } from '@/shared/lib/currency';
 
 const DAYS_OF_WEEK = [
@@ -147,6 +147,7 @@ export default function MemberDetailPage() {
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [docTag, setDocTag] = useState('');
   const [apptPage, setApptPage] = useState(0);
+  const [apptsTruncated, setApptsTruncated] = useState(false);
   const [kpiRange, setKpiRange] = useState('all');
   const [currency, setCurrency] = useState('AUD');
   const [salonBizHours, setSalonBizHours] = useState(null);
@@ -202,8 +203,11 @@ export default function MemberDetailPage() {
       params.date_from = format(from, 'yyyy-MM-dd');
     }
     try {
-      const res = await api.get('/g/appointments', { params });
-      setAppointments(listItems(res.data));
+      // Every page of the range (bug member_summary_ranges_wrong: one page of
+      // 100, and All without dates stopped at the 90-day default window)
+      const { items, truncated } = await fetchAllPages(api, '/g/appointments', params, { maxRows: 2000 });
+      setAppointments(items);
+      setApptsTruncated(truncated);
       setApptPage(0);
     } catch (e) { console.error('Failed to fetch appointments:', e); }
   }, [memberId]);
@@ -262,8 +266,11 @@ export default function MemberDetailPage() {
           api.get('/services', { params: { limit: 200 } }),
           api.get(`/availability/staff/${memberId}/services`),
         ]);
-        setAllServices(listItems(svcRes.data));
-        const ids = capRes.data.service_ids || [];
+        const services = listItems(svcRes.data);
+        setAllServices(services);
+        // Links to deleted services are not capabilities (bug capability_counter_counts_deleted)
+        const known = new Set(services.map(sv => sv.id));
+        const ids = (capRes.data.service_ids || []).filter(id => known.has(id));
         setCapabilityIds(ids);
         setSavedCapabilityIds(ids);
       } catch { }
@@ -646,7 +653,7 @@ export default function MemberDetailPage() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatBox label="Total" value={appointments.length} color="bg-primary/10 text-primary" />
+            <StatBox label="Total" value={`${appointments.length}${apptsTruncated ? '+' : ''}`} color="bg-primary/10 text-primary" />
             <StatBox label="Completed" value={completedAppts.length} color="bg-green-50 text-green-700" />
             <StatBox label="Scheduled" value={scheduledAppts.length} color="bg-blue-50 text-blue-700" />
             <StatBox label="Cancelled / No-Show" value={cancelledAppts.length} color="bg-red-50 text-red-700" />
@@ -1327,7 +1334,7 @@ export default function MemberDetailPage() {
               <Clock className="h-4 w-4 text-primary" /> Recent Appointments
               {appointments.length > 0 && <span className="text-xs text-slate-400 font-normal">({appointments.length})</span>}
             </CardTitle>
-            <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" onClick={() => navigate(`/dashboard/appointments?staff_id=${memberId}`)}>
+            <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" onClick={() => navigate(`/dashboard/appointments?staff_id=${memberId}&date=all`)}>
               View All <ExternalLink className="h-3 w-3 ml-1" />
             </Button>
           </div>

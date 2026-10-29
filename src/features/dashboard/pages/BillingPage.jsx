@@ -11,7 +11,7 @@ import {
   CreditCard, TrendingUp, BarChart3, Mail, MessageSquare, Phone,
   CalendarCheck, DollarSign, CheckCircle, AlertCircle, Zap, Star, Trash2, Plus,
 } from 'lucide-react';
-import { format, subMonths } from 'date-fns';
+import { format, subMonths, endOfMonth, parseISO } from 'date-fns';
 import { formatPrice } from '@/shared/lib/currency';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -137,7 +137,11 @@ export default function BillingPage() {
         api.get('/billing/usage', { params: usageParams }),
         api.get('/billing/invoices'),
         api.get('/billing/payment-methods').catch(() => ({ data: [] })),
-        api.get('/g/analytics/revenue', { params: { period: 'month' } }).catch(() => ({ data: { revenue: 0 } })),
+        // Bug billing_roi_wrong_window: revenue for the same period as the cost
+        api.get('/g/analytics/revenue', { params: (dateFrom && dateTo)
+          ? { date_from: dateFrom, date_to: dateTo }
+          : { date_from: `${selectedMonth}-01`, date_to: format(endOfMonth(parseISO(`${selectedMonth}-01`)), 'yyyy-MM-dd') },
+        }).catch(() => ({ data: { revenue: 0 } })),
       ]);
       setPlan(planRes.data);
       setUsage(usageRes.data);
@@ -255,11 +259,21 @@ export default function BillingPage() {
     return { value: format(d, 'yyyy-MM'), label: format(d, 'MMM yyyy') };
   });
 
+  // What is charged: messages inside the free quota cost nothing, and the plan
+  // minimum tops up a quiet month (bugs billing_cost_breakdown_counts_free_quota,
+  // itemised_usage_missing_minimum_line)
+  const billed = {
+    sms: (usage?.billable?.sms || 0) * rates.sms,
+    email: (usage?.billable?.email || 0) * rates.email,
+    voice: (usage?.billable?.voice_minutes || 0) * rates.voice_minute,
+  };
+  const minimumTopUp = Math.max(0, Math.round((subtotal - (usage?.usage_subtotal ?? subtotal)) * 100) / 100);
   const pieData = [
     { name: 'Bookings', value: u.bookings?.amount || 0 },
-    { name: 'SMS', value: u.sms?.amount || 0 },
-    { name: 'Email', value: u.email?.amount || 0 },
-    { name: 'Voice', value: u.voice?.amount || 0 },
+    { name: 'SMS', value: billed.sms },
+    { name: 'Email', value: billed.email },
+    { name: 'Voice', value: billed.voice },
+    { name: 'Plan minimum', value: minimumTopUp },
   ].filter(d => d.value > 0);
 
   return (
@@ -379,7 +393,7 @@ export default function BillingPage() {
                       }
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      This month: {formatPrice(revenue, 'AUD')} revenue / {formatPrice(subtotal, 'AUD')} Zalma cost
+                      {(dateFrom && dateTo) ? `${dateFrom} to ${dateTo}` : format(parseISO(`${selectedMonth}-01`), 'MMM yyyy')}: {formatPrice(revenue, 'AUD')} revenue / {formatPrice(subtotal, 'AUD')} Zalma cost
                     </p>
                   </div>
                 </div>
@@ -583,7 +597,7 @@ export default function BillingPage() {
                     <TableCell className="text-right text-green-600">{u.sms?.included || 0}</TableCell>
                     <TableCell className="text-right font-medium">{usage?.billable?.sms || 0}</TableCell>
                     <TableCell className="text-right text-slate-500">A${rates.sms} / SMS</TableCell>
-                    <TableCell className="text-right font-bold pr-6">{formatPrice((usage?.billable?.sms || 0) * rates.sms, 'AUD')}</TableCell>
+                    <TableCell className="text-right font-bold pr-6">{formatPrice(billed.sms, 'AUD')}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell className="pl-6"><div className="flex items-center gap-2"><Mail className="h-4 w-4 text-amber-500" /> Email</div></TableCell>
@@ -591,7 +605,7 @@ export default function BillingPage() {
                     <TableCell className="text-right text-green-600">{u.email?.included || 0}</TableCell>
                     <TableCell className="text-right font-medium">{usage?.billable?.email || 0}</TableCell>
                     <TableCell className="text-right text-slate-500">A${rates.email} / email</TableCell>
-                    <TableCell className="text-right font-bold pr-6">{formatPrice((usage?.billable?.email || 0) * rates.email, 'AUD')}</TableCell>
+                    <TableCell className="text-right font-bold pr-6">{formatPrice(billed.email, 'AUD')}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell className="pl-6"><div className="flex items-center gap-2"><Phone className="h-4 w-4 text-violet-500" /> Voice</div></TableCell>
@@ -599,8 +613,17 @@ export default function BillingPage() {
                     <TableCell className="text-right text-green-600">{u.voice?.included || 0} min</TableCell>
                     <TableCell className="text-right font-medium">{usage?.billable?.voice_minutes || 0} min</TableCell>
                     <TableCell className="text-right text-slate-500">A${rates.voice_minute} / min</TableCell>
-                    <TableCell className="text-right font-bold pr-6">{formatPrice((usage?.billable?.voice_minutes || 0) * rates.voice_minute, 'AUD')}</TableCell>
+                    <TableCell className="text-right font-bold pr-6">{formatPrice(billed.voice, 'AUD')}</TableCell>
                   </TableRow>
+                  {minimumTopUp > 0 && (
+                    <TableRow>
+                      <TableCell className="pl-6" colSpan={5}>
+                        Plan minimum top-up
+                        <span className="text-xs text-slate-400 ml-2">(usage {formatPrice(usage?.usage_subtotal || 0, 'AUD')}, minimum {formatPrice(usage?.plan_minimum || 0, 'AUD')})</span>
+                      </TableCell>
+                      <TableCell className="text-right font-bold pr-6">{formatPrice(minimumTopUp, 'AUD')}</TableCell>
+                    </TableRow>
+                  )}
                   <TableRow className="bg-slate-50 font-bold">
                     <TableCell className="pl-6" colSpan={5}>Estimated Total</TableCell>
                     <TableCell className="text-right text-lg pr-6">{formatPrice(subtotal, 'AUD')}</TableCell>

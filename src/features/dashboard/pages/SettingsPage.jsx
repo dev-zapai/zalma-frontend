@@ -89,7 +89,12 @@ export default function SettingsPage() {
         setForm({ name: res.data.name, type: res.data.type || 'pet_grooming', email: res.data.email || '', phone: res.data.phone || '', theme_color: res.data.theme_color || '#2563EB' });
         // Hydrate the salon address - prefer the structured parts saved by
         // this card; fall back to the flat tenant columns for older data.
-        const parts = res.data.settings?.address_parts;
+        // Parts saved here go stale when the Explore map saves a new location
+        // (it writes the flat columns only); then the flat columns win
+        // (bug settings_address_ignores_explore_location).
+        const savedParts = res.data.settings?.address_parts;
+        const parts = savedParts && (!res.data.address
+          || composeStreetLine(savedParts.unit, savedParts.street) === res.data.address) ? savedParts : null;
         setSalonAddr({
           unit: parts?.unit || '',
           address: parts?.street ?? res.data.address ?? '',
@@ -100,7 +105,11 @@ export default function SettingsPage() {
           longitude: res.data.longitude ?? null,
         });
         const rc = res.data.settings?.receipt_config || {};
+        // Every stored field is kept (bug settings_receipt_fields_lost: the
+        // bank details, payment methods, prefix, policy and toggles were not
+        // loaded, so they showed empty and the next save wiped them)
         setReceiptConfig({
+          ...rc,
           tagline: rc.tagline || '',
           show_logo: rc.show_logo !== false,
           tax_rate: rc.tax_rate ?? 0,

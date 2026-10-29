@@ -16,7 +16,7 @@ import {
 import { format, addDays, startOfWeek, parseISO, isSameDay, differenceInCalendarDays } from 'date-fns';
 import { toast } from 'sonner';
 import DatePicker from '@/shared/components/DatePicker';
-import { listItems } from '@/shared/lib/listResponse';
+import { listItems, fetchAllPages } from '@/shared/lib/listResponse';
 
 // Salon calendar envelope - DEFAULTS only. Admins can override per-tenant in
 // Settings → Calendar Hours (stored as settings.calendar_hour_start/_end).
@@ -69,20 +69,26 @@ function fmtHM(hm) {
   return m ? `${hh}:${String(m).padStart(2, '0')}${ap}` : `${hh}${ap}`;
 }
 
-// Per-staff week summary - hours of free (bookable) vs booked time.
-// `available` blocks from the API are the FREE remainder after breaks and
-// appointments are carved out, so summing them is honest "free" time.
-function weekSummary(staff, hourStart, totalMinutes) {
+// Minutes of free (bookable) and booked time on one day, inside the visible
+// hours. `available` and `override` blocks are the FREE remainder after
+// breaks and appointments are carved out; a booking counts even on an off
+// day (bug availability_headers_disagree: the week header and the day header
+// use this one rule).
+export function dayMinutes(day, hourStart, totalMinutes) {
+  return (day?.blocks || []).reduce((acc, b) => {
+    const m = Math.max(0, clampOffset(hmToOffset(b.end, hourStart), totalMinutes) - clampOffset(hmToOffset(b.start, hourStart), totalMinutes));
+    if (b.status === 'booked') acc.booked += m;
+    else if (b.status === 'available' || b.status === 'override') acc.free += m;
+    return acc;
+  }, { free: 0, booked: 0 });
+}
+
+// Per-staff week summary - hours of free vs booked time, summed over the days.
+export function weekSummary(staff, hourStart, totalMinutes) {
   let free = 0, booked = 0;
   (staff.days || []).forEach(d => {
-    if (d.is_off) return;
-    (d.blocks || []).forEach(b => {
-      const mins = clampOffset(hmToOffset(b.end, hourStart), totalMinutes)
-        - clampOffset(hmToOffset(b.start, hourStart), totalMinutes);
-      if (mins <= 0) return;
-      if (b.status === 'available' || b.status === 'override') free += mins;
-      else if (b.status === 'booked') booked += mins;
-    });
+    const m = dayMinutes(d, hourStart, totalMinutes);
+    free += m.free; booked += m.booked;
   });
   const fmt = (mins) => {
     const h = mins / 60;
@@ -111,10 +117,10 @@ export default function AvailabilityPage() {
     if (view !== 'day') return;
     setWeekStart(startOfWeek(selectedDay, { weekStartsOn: 1 }));
     const d = format(selectedDay, 'yyyy-MM-dd');
-    api.get('/g/appointments', { params: { date_from: d, date_to: d, limit: 200 } })
-      .then(res => {
+    fetchAllPages(api, '/g/appointments', { date_from: d, date_to: d, limit: 100 }, { maxRows: 500 })
+      .then(({ items }) => {
         const map = {};
-        (res.data?.items || []).forEach(a => {
+        items.forEach(a => {
           map[a.id] = { pet: a.pet?.name, owner: a.client?.full_name };
         });
         setDayDetails(map);
@@ -274,7 +280,7 @@ export default function AvailabilityPage() {
                 borderLeft: `3px solid ${style.accent}`,
               }}
               title={b.status === 'booked' && b.appointment_id
-                ? `Open appointment · ${fmtHM(b.start)}–${fmtHM(b.end)}`
+                ? `${b.appointment_ids?.length > 1 ? `${b.appointment_ids.length} bookings at once, opens the latest` : 'Open appointment'} · ${fmtHM(b.start)}–${fmtHM(b.end)}`
                 : `${style.label} · ${fmtHM(b.start)}–${fmtHM(b.end)}`}
               onClick={(e) => {
                 // A booked block opens THAT appointment; the day column's
@@ -290,7 +296,9 @@ export default function AvailabilityPage() {
                 return (
                   <div className="px-1.5 py-1 leading-tight">
                     <p className="font-semibold truncate">
-                      {info ? [info.pet, info.owner].filter(Boolean).join(' · ') || style.label : style.label}
+                      {b.appointment_ids?.length > 1
+                        ? `${b.appointment_ids.length} bookings`
+                        : info ? [info.pet, info.owner].filter(Boolean).join(' · ') || style.label : style.label}
                     </p>
                     <p className="opacity-70 truncate tabular-nums">{fmtHM(b.start)}–{fmtHM(b.end)}</p>
                   </div>
@@ -456,12 +464,7 @@ export default function AvailabilityPage() {
                     </div>
                     {weekData.staff.map(staff => {
                       const day = staff.days[dayIdx];
-                      const mins = (day?.blocks || []).reduce((acc, b) => {
-                        const m = Math.max(0, clampOffset(hmToOffset(b.end, hourStart), totalMinutes) - clampOffset(hmToOffset(b.start, hourStart), totalMinutes));
-                        if (b.status === 'booked') acc.booked += m;
-                        else if (b.status === 'available') acc.free += m;
-                        return acc;
-                      }, { free: 0, booked: 0 });
+                      const mins = dayMinutes(day, hourStart, totalMinutes);
                       return (
                         <div key={staff.id} className="py-2 px-2 border-l border-slate-200/60 flex items-center gap-2 min-w-0">
                           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ring-2 ring-white shadow-sm" style={{ backgroundColor: staff.color }}>
