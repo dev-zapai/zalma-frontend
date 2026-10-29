@@ -29,9 +29,10 @@ export default function PartnerChatPage() {
   }, [partnershipId]);
 
   // Initial message load
+  const [hasOlder, setHasOlder] = useState(false);
   useEffect(() => {
-    api.get(`/partners/${partnershipId}/messages`, { params: { limit: 100 } })
-      .then(r => { setMessages(r.data?.messages || []); setLoading(false); })
+    api.get(`/partners/${partnershipId}/messages`, { params: { limit: 50 } })
+      .then(r => { setMessages(r.data?.messages || []); setHasOlder(Boolean(r.data?.has_more)); setLoading(false); })
       .catch(() => setLoading(false));
     // Mark as read
     api.put(`/partners/${partnershipId}/read`).catch(() => {});
@@ -48,6 +49,18 @@ export default function PartnerChatPage() {
         setMessages(prev => [...prev, ...newMsgs]);
         api.put(`/partners/${partnershipId}/read`).catch(() => {});
       }
+    } catch { /* ignore */ }
+  };
+
+  // Fix 05: older history loads on demand (messages before the oldest shown).
+  const loadOlder = async () => {
+    const first = messages[0]?.created_at;
+    if (!first) return;
+    try {
+      const r = await api.get(`/partners/${partnershipId}/messages`, { params: { before: first, limit: 50 } });
+      const older = r.data?.messages || [];
+      setMessages(prev => [...older, ...prev]);
+      setHasOlder(Boolean(r.data?.has_more) && older.length > 0);
     } catch { /* ignore */ }
   };
 
@@ -103,6 +116,11 @@ export default function PartnerChatPage() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-4 space-y-3">
+        {hasOlder && !loading && (
+          <div className="text-center">
+            <Button variant="ghost" size="sm" onClick={loadOlder}>Load older messages</Button>
+          </div>
+        )}
         {loading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
         ) : messages.length === 0 ? (

@@ -146,7 +146,7 @@ function StaffTable({ isAdmin, canGrantAdmin, refreshKey, search, roleFilter, ac
     const action = item.is_active ? 'deactivate' : 'activate';
     try {
       await api.put(`/staff/${item.id}/${action}`);
-      toast.success(item.is_active ? 'Member deactivated — they cannot log in' : 'Member reactivated');
+      toast.success(item.is_active ? 'Member deactivated. They cannot log in.' : 'Member reactivated');
       fetchStaff();
       if (onChange) onChange();
     } catch (e) {
@@ -449,7 +449,7 @@ function TrashDialog({ open, onOpenChange, ownerUserId, onChange }) {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-700 line-through">{item.full_name}</p>
                     <p className="text-xs text-slate-400">
-                      {item.role || '—'}
+                      {item.role || '-'}
                       {item.deleted_at && (
                         <> · Deleted {new Date(item.deleted_at).toLocaleDateString()}</>
                       )}
@@ -512,11 +512,10 @@ export default function StaffPage() {
       setCurrency(r.data?.settings?.currency || 'AUD');
       setTenantRoles(r.data?.settings?.roles || []);
     }).catch(() => {});
-    // Find the owner via /members?is_owner=true (or fall back to checking users)
-    api.get('/members').then(r => {
-      const members = listItems(r.data);
-      const owner = members.find(m => m.is_owner);
-      setOwnerUserId(owner?.id || null);
+    // The owner's user id marks the owner row (bug staff_page_owner_lookup_405:
+    // GET /members does not exist; /members/owner does)
+    api.get('/members/owner').then(r => {
+      setOwnerUserId(r.data?.user_id || null);
     }).catch(() => {});
     // Trash count badge
     api.get('/staff', { params: { include_deleted: true, limit: 1 } })

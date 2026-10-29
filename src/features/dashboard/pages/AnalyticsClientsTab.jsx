@@ -35,7 +35,7 @@ export default function AnalyticsClientsTab({ currency, days, customRange }) {
           <Card className="rounded-xl border-slate-200/60">
             <CardContent className="p-5">
               <div className="flex items-center gap-2 text-sm text-slate-500">
-                <Users className="h-4 w-4 text-blue-500" /> Avg Lifetime Value
+                <Users className="h-4 w-4 text-blue-500" /> Avg Spend per Client
               </div>
               <p className="text-3xl font-bold text-slate-900 mt-1">
                 {formatPrice(data.avg_lifetime_value, currency)}

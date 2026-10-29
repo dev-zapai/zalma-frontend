@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/components/ui
 import { Share2, Check, X, Clock, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { listItems } from '@/shared/lib/listResponse';
+import { listItems, listMeta } from '@/shared/lib/listResponse';
 
 const STATUS_COLORS = {
   pending: 'bg-amber-100 text-amber-700',
@@ -22,24 +22,45 @@ export default function TransfersPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [nextCursor, setNextCursor] = useState(null);
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/g/transfers/${direction}`);
+      const res = await api.get(`/g/transfers/${direction}`, { params: { limit: 50 } });
       setItems(listItems(res.data));
+      setNextCursor(listMeta(res.data).nextCursor);
     } catch { toast.error('Failed to load transfers'); }
     setLoading(false);
   }, [direction]);
 
+  // Fix 05: transfers page by cursor, newest first.
+  const loadMore = async () => {
+    if (!nextCursor) return;
+    try {
+      const res = await api.get(`/g/transfers/${direction}`, { params: { limit: 50, cursor: nextCursor } });
+      setItems(prev => [...prev, ...listItems(res.data)]);
+      setNextCursor(listMeta(res.data).nextCursor);
+    } catch { toast.error('Failed to load more'); }
+  };
+
   useEffect(() => { fetchList(); }, [fetchList]);
 
+  // One Accept at a time (bug transfer_accept_double_click, 2026-10-28).
+  const [acceptingId, setAcceptingId] = useState(null);
   const handleAccept = async (t) => {
+    if (acceptingId) return;
     if (!window.confirm(`Accept transfer for ${t.client_snapshot?.full_name || 'client'}?`)) return;
+    setAcceptingId(t.id);
     try {
       await api.post(`/g/transfers/${t.id}/accept`, {});
       toast.success('Transfer accepted - new appointment created');
       fetchList();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Accept failed'); }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Accept failed');
+      fetchList();
+    } finally {
+      setAcceptingId(null);
+    }
   };
 
   const handleDecline = async (t) => {
@@ -129,9 +150,9 @@ export default function TransfersPage() {
                       <div className="flex items-center gap-2 shrink-0">
                         {direction === 'incoming' && t.status === 'pending' && (
                           <>
-                            <Button size="sm" onClick={() => handleAccept(t)}
+                            <Button size="sm" onClick={() => handleAccept(t)} disabled={!!acceptingId}
                                     className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                              <Check className="h-3.5 w-3.5 mr-1" /> Accept
+                              <Check className="h-3.5 w-3.5 mr-1" /> {acceptingId === t.id ? 'Accepting...' : 'Accept'}
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => handleDecline(t)}>
                               <X className="h-3.5 w-3.5 mr-1" /> Decline
@@ -180,7 +201,7 @@ export default function TransfersPage() {
                         <ul className="text-slate-700 space-y-0.5">
                           {(t.service_snapshot || []).map((s, i) => (
                             <li key={i}>
-                              {s.name} <span className="text-slate-400">· {s.duration_minutes}m</span>
+                              {s.name}{(s.quantity || 1) > 1 ? ` x${s.quantity}` : ''} <span className="text-slate-400">· {s.duration_minutes}m</span>
                             </li>
                           ))}
                         </ul>
@@ -199,6 +220,12 @@ export default function TransfersPage() {
                   </CardContent>
                 </Card>
               ))}
+              {/* bug transfers_load_more_in_every_card: one button, below the list */}
+              {nextCursor && (
+                <div className="py-3 text-center">
+                  <Button variant="outline" size="sm" onClick={loadMore}>Load more</Button>
+                </div>
+              )}
             </div>
           )}
         </TabsContent>

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Badge } from '@/shared/components/ui/badge';
 import { Switch } from '@/shared/components/ui/switch';
 import {
-  Plus, Edit, Trash2, Clock, DollarSign, Users, Package, Tag, Minus, PawPrint, Zap,
+  Plus, Edit, Trash2, Clock, Users, Package, Tag, Minus, PawPrint, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { listItems } from '@/shared/lib/listResponse';
@@ -39,7 +39,7 @@ export default function ServicesPage() {
   const fetchData = useCallback(async () => {
     try {
       const [svcRes, staffRes, tenantRes, bundleRes] = await Promise.all([
-        api.get('/services'),
+        api.get('/services', { params: { limit: 500 } }),   // every service, not the first page of 20
         api.get('/staff', { params: { limit: 200 } }),
         api.get('/tenant/me'),
         api.get('/service-bundles').catch(() => ({ data: [] })),
@@ -88,12 +88,19 @@ export default function ServicesPage() {
       toast.error('Select at least one groomer who can perform this service');
       return;
     }
+    // A service must keep a name, a duration of 5 minutes or more and a price
+    // (bug blank_required_field_removes_it; a blank number used to be sent as null).
+    const minutes = parseInt(form.duration_minutes, 10);
+    const price = parseFloat(form.price);
+    if (!(form.name || '').trim()) { toast.error('Service name is required'); return; }
+    if (!Number.isFinite(minutes) || minutes < 5) { toast.error('Duration must be at least 5 minutes'); return; }
+    if (!Number.isFinite(price) || price < 0) { toast.error('Price must be zero or more'); return; }
     try {
       const payload = {
-        name: form.name,
+        name: form.name.trim(),
         description: form.description,
-        duration_minutes: parseInt(form.duration_minutes),
-        price: parseFloat(form.price),
+        duration_minutes: minutes,
+        price,
         color: form.color,
         compatible_species: form.compatible_species?.length > 0 ? form.compatible_species : null,
         dynamic_pricing_enabled: form.dynamic_pricing_enabled || false,
@@ -264,7 +271,7 @@ export default function ServicesPage() {
               </div>
               <div className="flex items-center gap-4 mt-4 text-sm text-slate-600">
                 <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{s.duration_minutes} min</span>
-                <span className="flex items-center gap-1"><DollarSign className="h-3.5 w-3.5" />{s.price}</span>
+                <span className="flex items-center gap-1">{formatPrice(s.price, currency)}</span>
                 {s.compatible_species?.length > 0 && (
                   <span className="flex items-center gap-1 text-xs text-slate-500">
                     <PawPrint className="h-3 w-3" />
@@ -272,13 +279,15 @@ export default function ServicesPage() {
                   </span>
                 )}
               </div>
-              {s.staff_ids && s.staff_ids.length > 0 ? (
+              {/* Only groomers on the team count: a link to a member in the Trash
+                  showed as "Unknown" and hid the warning (bug trashed_groomer_unknown_badge) */}
+              {(s.staff_ids || []).some(id => staffNameById[id]) ? (
                 <div className="mt-3 flex items-start gap-1.5">
                   <Users className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
                   <div className="flex flex-wrap gap-1">
-                    {s.staff_ids.map(id => (
+                    {s.staff_ids.filter(id => staffNameById[id]).map(id => (
                       <Badge key={id} variant="outline" className="text-[10px] rounded-full">
-                        {staffNameById[id] || 'Unknown'}
+                        {staffNameById[id]}
                       </Badge>
                     ))}
                   </div>

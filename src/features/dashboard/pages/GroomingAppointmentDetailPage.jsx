@@ -24,7 +24,10 @@ import DatePicker from '@/shared/components/DatePicker';
 import { formatPrice, getCurrencySymbol } from '@/shared/lib/currency';
 import { formatInSalonTz, salonTime } from '@/shared/lib/salonTime';
 import DownloadReceipt from '@/shared/components/DownloadReceipt';
+import { round2 } from '@/shared/lib/money';
 import { listItems } from '@/shared/lib/listResponse';
+import { addServiceRequest } from '../lib/addServiceRequest';
+import { paymentMethodLabel } from '@/shared/lib/receiptLabels';
 
 // Status workflow configuration
 const STATUS_FLOW = [
@@ -100,7 +103,11 @@ export default function GroomingAppointmentDetailPage() {
   const [tenant, setTenant] = useState(null);
   const [currency, setCurrency] = useState('AUD');
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('services');
+  // ?tab=receipt (from the Notifications page) opens that tab directly.
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+    return ['services', 'receipt', 'notes', 'photos', 'feedback'].includes(t) ? t : 'services';
+  });
   const [statusUpdating, setStatusUpdating] = useState(false);
 
   // Previous grooming context (last note + last feedback for this pet)
@@ -184,6 +191,25 @@ export default function GroomingAppointmentDetailPage() {
       setReceiptForm(f => ({ ...f, tax_rate: taxRate }));
     } catch (e) { console.error(e); }
     setLoading(false);
+  }, [appointmentId]);
+
+  // After a row write only the appointment itself changes (rows, window,
+  // totals): reload that one request instead of the whole page, and keep
+  // the server's own answer for the rows it just wrote or removed, because
+  // the row list is served from a secondary index that can lag a write
+  // by a moment (2026-10-27, slow and flaky add/remove).
+  const refreshAppointment = useCallback(async ({ addedRows = [], removedIds = [] } = {}) => {
+    try {
+      const res = await api.get(`/g/appointments/${appointmentId}`);
+      const gone = new Set(removedIds);
+      const rows = (res.data.services_list || []).filter(r => !gone.has(r.id));
+      const seen = new Set(rows.map(r => r.id));
+      addedRows.forEach(r => { if (r && r.id && !seen.has(r.id)) rows.push(r); });
+      setAppt(res.data);
+      setApptServices(rows);
+      setPhotos(res.data.photos || []);
+      setReceipt(res.data.receipt || null);
+    } catch (e) { console.error(e); }
   }, [appointmentId]);
 
   // Rehydrate the receipt form from a saved receipt so the dialog shows
@@ -317,16 +343,24 @@ export default function GroomingAppointmentDetailPage() {
 
   // ─── Computed receipt totals ───────────────────────────────────────────────
   const subtotal = apptServices.reduce((s, i) => s + parseFloat(i.total || 0), 0);
-  const taxAmount = (subtotal * (parseFloat(receiptForm.tax_rate) || 0)) / 100;
   // Discount source-of-truth = computed dollar value. For percent mode we
   // derive it from `subtotal * percent / 100`; for amount mode we use the
   // fixed value entered. Both modes are sent to the backend together so
   // receipts can later be re-displayed with their original intent.
-  const discountPercent = parseFloat(receiptForm.discount_percent) || 0;
-  const discountAmount = receiptForm.discount_type === 'percent'
-    ? Math.round((subtotal * discountPercent) / 100 * 100) / 100
-    : parseFloat(receiptForm.discount_amount) || 0;
-  const grandTotal = Math.max(0, subtotal + taxAmount - discountAmount);
+  // Same clamps as the server (bugs negative_discount_or_tax_accepted,
+  // percent_discount_over_100_stored): typed values below 0 or a percent above
+  // 100 never change the total, and a discount never exceeds the subtotal.
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, parseFloat(v) || 0));
+  const discountPercent = clamp(receiptForm.discount_percent, 0, 100);
+  const discountAmount = Math.min(round2(subtotal), receiptForm.discount_type === 'percent'
+    ? round2((subtotal * discountPercent) / 100)
+    : round2(clamp(receiptForm.discount_amount, 0, Infinity)));
+  // Mirror of the server (receipt_routes._normalise_receipt_amounts): tax is
+  // charged on the discounted net, so the preview, the terminal charge and the
+  // stored receipt agree (2026-10-27).
+  const receiptNet = round2(Math.max(0, subtotal - discountAmount));
+  const taxAmount = round2(receiptNet * clamp(receiptForm.tax_rate, 0, 100) / 100);
+  const grandTotal = round2(receiptNet + taxAmount);
 
   // ─── Profile tags (server-computed) ─────────────────────────────────────────
   // partial = below 100% of the full profile fields -> "Partially Completed".
@@ -441,26 +475,54 @@ export default function GroomingAppointmentDetailPage() {
   // availability for THIS appointment's window (same-groomer first, free
   // capable next, busy ones selectable but flagged).
   const [staffOptions, setStaffOptions] = useState({});
-  const loadStaffOptions = useCallback(async (serviceId) => {
-    if (!serviceId) return;
-    setStaffOptions(prev => (prev[serviceId] ? prev : { ...prev, [serviceId]: null }));
+  // key: 'bundle:<id>' (adding a bundle), 'row:<item id>' (changing an existing
+  // row's groomer) or a service id (adding that service). The server judges
+  // the exact slot that decision books (2026-10-27).
+  const loadStaffOptions = useCallback(async (key) => {
+    if (!key) return;
+    setStaffOptions(prev => (prev[key] ? prev : { ...prev, [key]: null }));
     try {
-      const isBundle = serviceId.startsWith('bundle:');
-      const res = await api.get(`/g/appointments/${appointmentId}/staff-options`, {
-        params: isBundle ? {} : { service_id: serviceId },
-      });
-      setStaffOptions(prev => ({ ...prev, [serviceId]: res.data.options || [] }));
+      const params = key.startsWith('bundle:') ? { bundle_id: key.slice('bundle:'.length) }
+        : key.startsWith('row:') ? { service_item_id: key.slice('row:'.length) }
+        : { service_id: key };
+      const res = await api.get(`/g/appointments/${appointmentId}/staff-options`, { params });
+      setStaffOptions(prev => ({ ...prev, [key]: res.data.options || [] }));
     } catch {
-      setStaffOptions(prev => ({ ...prev, [serviceId]: undefined }));
+      setStaffOptions(prev => ({ ...prev, [key]: undefined }));
     }
   }, [appointmentId]);
 
-  // Prefetch options for the services already on the appointment (row dropdowns)
+  // Prefetch options for the rows already on the appointment (row dropdowns)
   useEffect(() => {
-    [...new Set(apptServices.map(i => i.service_id).filter(Boolean))]
-      .forEach(sid => { if (staffOptions[sid] === undefined) loadStaffOptions(sid); });
+    apptServices.forEach(i => { if (staffOptions[`row:${i.id}`] === undefined) loadStaffOptions(`row:${i.id}`); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apptServices]);
+
+  // What the appointment already holds, for the Add panel and the table.
+  const presentServiceIds = new Set(apptServices.map(s => s.service_id).filter(Boolean));
+  const presentBundleIds = new Set(apptServices.map(s => s.bundle_id).filter(Boolean));
+  // Rows grouped for display: a bundle is one header row followed by its members.
+  const serviceRenderList = (() => {
+    const out = [];
+    const headers = {};
+    apptServices.forEach(item => {
+      if (!item.bundle_id) { out.push({ type: 'row', item, member: false }); return; }
+      if (!headers[item.bundle_id]) {
+        const catalogueOf = (r) => services.find(sv => sv.id === r.service_id)?.price;
+        const bundle = { id: item.bundle_id, name: item.bundle_name || 'Bundle', rows: [], total: 0, catalogue: 0, minutes: 0, saving: 0 };
+        headers[item.bundle_id] = bundle;
+        out.push({ type: 'header', bundle });
+      }
+      const b = headers[item.bundle_id];
+      b.rows.push(item);
+      b.total = Math.round((b.total + parseFloat(item.total || 0)) * 100) / 100;
+      b.catalogue = Math.round((b.catalogue + parseFloat(item.unit_price || 0) * (item.quantity || 1)) * 100) / 100;
+      b.minutes += (item.duration_minutes || 0) * (item.quantity || 1);
+      b.saving = Math.round((b.catalogue - b.total) * 100) / 100;
+      out.push({ type: 'row', item, member: true });
+    });
+    return out;
+  })();
 
   const staffOptionLabel = (o) => (
     <span className="flex items-center gap-2">
@@ -468,6 +530,7 @@ export default function GroomingAppointmentDetailPage() {
       {o.assigned_here && <span className="text-[10px] font-medium text-emerald-600">on this appointment</span>}
       {o.busy && <span className="text-[10px] font-medium text-amber-600">busy at this time</span>}
       {!o.on_shift && <span className="text-[10px] text-slate-400">off shift</span>}
+      {o.capable === false && <span className="text-[10px] text-rose-500">cannot do this service</span>}
     </span>
   );
 
@@ -487,11 +550,11 @@ export default function GroomingAppointmentDetailPage() {
 
   // Mirror of the backend _line_total: percent capped at 100, never negative
   const computeLineTotal = (unitPrice, quantity, dType, dValue) => {
-    let gross = Math.round(parseFloat(unitPrice || 0) * (quantity || 1) * 100) / 100;
+    let gross = round2(parseFloat(unitPrice || 0) * (quantity || 1));
     const dv = parseFloat(dValue || 0);
     if (dType === 'percent' && dv > 0) gross -= gross * Math.min(dv, 100) / 100;
     else if (dType === 'amount' && dv > 0) gross -= dv;
-    return Math.round(Math.max(0, gross) * 100) / 100;
+    return round2(Math.max(0, gross));
   };
 
   // Apply a discount change instantly (line total + subtotal update at once),
@@ -527,55 +590,75 @@ export default function GroomingAppointmentDetailPage() {
     }
   };
 
-  const handleAddService = async (allowConflict = false) => {
-    if (!addServiceId) return;
+  // One add at a time: the button is disabled while a request is in flight, so
+  // a double click cannot add twice (2026-10-27).
+  const [adding, setAdding] = useState(false);
+
+  const performAdd = async (allowConflict, replaceExisting) => {
+    const req = addServiceRequest(appointmentId, addServiceId, {
+      services, staffId: addStaffId, qty: addQty, allowConflict, replaceExisting,
+    });
+    if (!req) return;
     try {
-      if (addServiceId.startsWith('bundle:')) {
-        // Add the whole bundle - the server distributes the bundle price
-        // across its member service rows.
-        const bundleId = addServiceId.slice('bundle:'.length);
-        const res = await api.post(`/g/appointments/${appointmentId}/bundles`, {
-          bundle_id: bundleId,
-          staff_id: addStaffId || null,
-          allow_conflict: allowConflict,
-        });
-        setApptServices(prev => [...prev, ...(res.data.services || [])]);
-        toast.success(`Bundle added: ${res.data.bundle_name}`);
-      } else {
-        const svc = services.find(s => s.id === addServiceId);
-        if (!svc) return;
-        const item = {
-          service_id: svc.id,
-          staff_id: addStaffId || null,
-          name: svc.name,
-          duration_minutes: svc.duration_minutes,
-          unit_price: parseFloat(svc.price),
-          quantity: addQty,
-          total: parseFloat(svc.price) * addQty,
-          allow_conflict: allowConflict,
-        };
-        const res = await api.post(`/g/appointments/${appointmentId}/services`, item);
-        setApptServices(prev => [...prev, res.data]);
-        toast.success('Service added');
-      }
+      const res = await api.post(req.url, req.body);
+      toast.success(req.kind === 'bundle' ? `Bundle added: ${res.data.bundle_name}` : 'Service added');
       setAddServiceId('');
       setAddStaffId('');
       setAddQty(1);
-      // The appointment window auto-extended server-side - refresh header times
-      api.get(`/g/appointments/${appointmentId}`).then(r => setAppt(r.data)).catch(() => {});
+      // The server is the truth for rows, prices and the window: reload it.
+      const added = req.kind === 'bundle' ? (res.data.services || []) : [res.data];
+      await refreshAppointment({ addedRows: added });
     } catch (e) {
-      const handled = await confirmConflictRetry(e, () => handleAddService(true))
+      const detail = e?.response?.data?.detail;
+      if (e?.response?.status === 409 && detail && typeof detail === 'object') {
+        // A refusal with a code: duplicate_services (a loose row of a member
+        // service, replace it?), outside_hours (add anyway?), or a plain
+        // explanation (duplicate_service, bundle_already_added, duplicate_in_bundle).
+        if (detail.code === 'duplicate_services') {
+          if (window.confirm(detail.message)) await performAdd(allowConflict, true);
+          return;
+        }
+        if (detail.code === 'outside_hours') {
+          if (window.confirm(detail.message)) await performAdd(true, replaceExisting);
+          return;
+        }
+        toast.error(detail.message || 'Not allowed');
+        return;
+      }
+      const handled = await confirmConflictRetry(e, () => performAdd(true, replaceExisting))
         .catch(() => { toast.error('Failed to add'); return true; });
-      if (!handled) toast.error(e?.response?.data?.detail || 'Failed to add');
+      if (!handled) toast.error(typeof detail === 'string' ? detail : 'Failed to add');
+    }
+  };
+
+  const handleAddService = async (allowConflict = false) => {
+    if (adding) return;
+    setAdding(true);
+    try {
+      await performAdd(allowConflict === true, false);
+    } finally {
+      setAdding(false);
     }
   };
 
   const handleRemoveService = async (serviceItemId) => {
     try {
       await api.delete(`/g/appointments/${appointmentId}/services/${serviceItemId}`);
-      setApptServices(prev => prev.filter(s => s.id !== serviceItemId));
       toast.success('Service removed');
-    } catch (e) { toast.error('Failed to remove service'); }
+      // The window shrank server-side: reload so the header matches the rows.
+      await refreshAppointment({ removedIds: [serviceItemId] });
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      toast.error(detail && typeof detail === 'object' ? detail.message : 'Failed to remove service');
+    }
+  };
+
+  const handleRemoveBundle = async (bundleId) => {
+    try {
+      await api.delete(`/g/appointments/${appointmentId}/bundles/${bundleId}`);
+      toast.success('Bundle removed');
+      await refreshAppointment({ removedIds: apptServices.filter(r => r.bundle_id === bundleId).map(r => r.id) });
+    } catch (e) { toast.error('Failed to remove bundle'); }
   };
 
   // ─── Photo upload ──────────────────────────────────────────────────────────
@@ -610,7 +693,12 @@ export default function GroomingAppointmentDetailPage() {
   // ─── Generate receipt ──────────────────────────────────────────────────────
   // `terminal` (optional) - when payment was taken on an EFTPOS terminal, we
   // tag the receipt with the bank + terminal id so the audit trail is clear.
+  // One Generate at a time: a second click while the first is in flight would
+  // try a second receipt (bug duplicate_receipt_on_double_click, 2026-10-28).
+  const [generatingReceipt, setGeneratingReceipt] = useState(false);
   const handleGenerateReceipt = async (terminal = null) => {
+    if (generatingReceipt) return;
+    setGeneratingReceipt(true);
     try {
       const pmLabel = terminal
         ? `terminal:${terminal.bank}:${terminal.terminal_id}`
@@ -621,14 +709,15 @@ export default function GroomingAppointmentDetailPage() {
       const combinedNotes = [receiptForm.notes, terminalNote].filter(Boolean).join(' ');
       const payload = {
         subtotal,
-        tax_rate: parseFloat(receiptForm.tax_rate) || 0,
+        tax_rate: Math.min(100, Math.max(0, parseFloat(receiptForm.tax_rate) || 0)),
         tax_amount: taxAmount,
         discount_amount: discountAmount,
         discount_percent: receiptForm.discount_type === 'percent' ? discountPercent : 0,
         total: grandTotal,
         currency,
         payment_method: pmLabel,
-        payment_status: receiptForm.payment_status,
+        // bug terminal_payment_received_stored_pending: the terminal approved the charge
+        payment_status: terminal ? 'paid' : receiptForm.payment_status,
         notes: combinedNotes,
       };
       const res = await api.post(`/g/appointments/${appointmentId}/receipt`, payload);
@@ -637,6 +726,37 @@ export default function GroomingAppointmentDetailPage() {
       toast.success(`Receipt ${res.data.receipt_number} generated!`);
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Failed to generate receipt');
+    } finally {
+      setGeneratingReceipt(false);
+    }
+  };
+
+  // Mark a pending or part-paid receipt as paid (bug pending_receipt_cannot_be_settled).
+  const [settleMethod, setSettleMethod] = useState('cash');
+  const [settling, setSettling] = useState(false);
+  const handleSettleReceipt = async () => {
+    if (!receipt || settling) return;
+    setSettling(true);
+    try {
+      const res = await api.put(`/g/appointments/${appointmentId}/receipt`, {
+        subtotal: receipt.subtotal,
+        tax_rate: receipt.tax_rate,
+        tax_amount: receipt.tax_amount,
+        discount_amount: receipt.discount_amount,
+        discount_percent: receipt.discount_percent || 0,
+        total: receipt.total,
+        currency: receipt.currency,
+        payment_method: settleMethod,
+        payment_status: 'paid',
+        notes: receipt.notes,
+      });
+      setReceipt(res.data);
+      toast.success(`Receipt ${res.data.receipt_number} marked as paid`);
+    } catch (e) {
+      const d = e?.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Could not record the payment');
+    } finally {
+      setSettling(false);
     }
   };
 
@@ -660,33 +780,30 @@ export default function GroomingAppointmentDetailPage() {
   // the user can pick a new time. Saving issues a single PUT to update the
   // appointment's start/end + per-service start/end stay proportional.
   useEffect(() => {
-    if (!rescheduleOpen || !rescheduleDate || !apptServices.length) {
+    if (!rescheduleOpen || !rescheduleDate) {
       setRescheduleSlots([]);
       return;
     }
-    const ids = apptServices.map(s => s.service_id).filter(Boolean).join(',');
-    if (!ids) return;
     setRescheduleLoading(true);
     setRescheduleSlot(null);
-    api.get('/g/appointments/multi-auto-slots', {
-      params: { date: rescheduleDate, service_ids: ids },
+    // The slots THIS appointment can move to: same groomers, same shape, the
+    // appointment itself not counted as busy (2026-10-27).
+    api.get(`/g/appointments/${appointmentId}/reschedule-slots`, {
+      params: { date: rescheduleDate },
     }).then(res => setRescheduleSlots(res.data || []))
       .catch(() => setRescheduleSlots([]))
       .finally(() => setRescheduleLoading(false));
-  }, [rescheduleOpen, rescheduleDate, apptServices]);
+  }, [rescheduleOpen, rescheduleDate, appointmentId]);
 
   const handleReschedule = async () => {
     if (!rescheduleSlot) return;
     setRescheduling(true);
     try {
-      // Build the new date+time as an ISO datetime in the client's local TZ
-      // (the backend stores tz-naive, so this matches how new bookings are
-      // ingested by /multi-book).
-      const start = new Date(`${rescheduleDate}T${rescheduleSlot.start_time}`);
-      const end = new Date(`${rescheduleDate}T${rescheduleSlot.end_time}`);
+      // The slot carries the salon's instants in UTC; send them back untouched
+      // so the browser's timezone can never move the appointment.
       await api.put(`/g/appointments/${appointmentId}`, {
-        start_time: start.toISOString(),
-        end_time: end.toISOString(),
+        start_time: rescheduleSlot.start_iso,
+        end_time: rescheduleSlot.end_iso,
         // Bump status back to scheduled in case the appointment was already
         // marked as a no-show / cancelled (rescheduling implies it's live again).
         status: 'scheduled',
@@ -1083,7 +1200,39 @@ export default function GroomingAppointmentDetailPage() {
                         No services added yet. Add services below.
                       </TableCell>
                     </TableRow>
-                  ) : apptServices.map(item => {
+                  ) : serviceRenderList.map(entry => {
+                    if (entry.type === 'header') {
+                      const b = entry.bundle;
+                      return (
+                        <TableRow key={`bundle:${b.id}`} data-bundle-header={b.id} className="bg-violet-50/60">
+                          <TableCell className="font-semibold text-violet-900">
+                            {b.name}
+                            <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-violet-500">bundle</span>
+                            <div className="text-[11px] font-normal text-slate-500">{b.rows.length} services</div>
+                          </TableCell>
+                          <TableCell />
+                          <TableCell className="hidden sm:table-cell text-slate-500">{b.minutes ? `${b.minutes} min` : '-'}</TableCell>
+                          <TableCell className="text-slate-600">{formatPrice(b.catalogue, currency)}</TableCell>
+                          <TableCell className="text-green-600">{b.saving > 0 ? `- ${formatPrice(b.saving, currency)}` : '-'}</TableCell>
+                          <TableCell>1</TableCell>
+                          <TableCell className="font-semibold">{formatPrice(b.total, currency)}</TableCell>
+                          <TableCell>
+                            {!receipt && (
+                              <Button
+                                variant="ghost" size="icon"
+                                onClick={() => handleRemoveBundle(b.id)}
+                                className="h-7 w-7 text-red-400 hover:text-red-600"
+                                title="Remove the whole bundle"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                    const item = entry.item;
+                    const member = entry.member;
                     // Capability filter: only staff who can perform this service.
                     // The services list endpoint returns `staff_ids` per
                     // service (from migration 024) - fall back to the full
@@ -1095,8 +1244,10 @@ export default function GroomingAppointmentDetailPage() {
                       ? staffList.filter(s => capable.includes(s.id) && s.is_active !== false)
                       : staffList.filter(s => s.is_active !== false);
                     return (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableRow key={item.id} data-bundle-member={member ? item.bundle_id : undefined}>
+                      <TableCell className={member ? 'pl-7 text-slate-700' : 'font-medium'}>
+                        {member && <span className="text-violet-400 mr-1">&rsaquo;</span>}{item.name}
+                      </TableCell>
                       <TableCell>
                         {receipt ? (
                           <span className="text-sm text-slate-600">{item.staff_name || appt?.staff?.full_name || '-'}</span>
@@ -1127,7 +1278,7 @@ export default function GroomingAppointmentDetailPage() {
                             </SelectTrigger>
                             <SelectContent>
                               {(() => {
-                                const opts = staffOptions[item.service_id];
+                                const opts = staffOptions[`row:${item.id}`];
                                 if (Array.isArray(opts) && opts.length > 0) {
                                   return opts.map(o => (
                                     <SelectItem key={o.staff_id} value={o.staff_id}>
@@ -1162,7 +1313,12 @@ export default function GroomingAppointmentDetailPage() {
                         {formatPrice(item.unit_price, currency)}
                       </TableCell>
                       <TableCell>
-                        {!receipt ? (
+                        {member ? (
+                          <span className="text-sm text-slate-600">
+                            {item.discount_value ? formatPrice(item.discount_value, currency) : '-'}
+                            <span className="ml-1 text-[10px] text-violet-500">bundle</span>
+                          </span>
+                        ) : !receipt ? (
                           <div className="flex items-center gap-1">
                             <Input
                               type="number"
@@ -1199,14 +1355,16 @@ export default function GroomingAppointmentDetailPage() {
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell className="font-semibold">{formatPrice(item.total, currency)}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost" size="icon"
-                          onClick={() => handleRemoveService(item.id)}
-                          className="h-7 w-7 text-red-400 hover:text-red-600"
-                          disabled={!!receipt}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        {!member && (
+                          <Button
+                            variant="ghost" size="icon"
+                            onClick={() => handleRemoveService(item.id)}
+                            className="h-7 w-7 text-red-400 hover:text-red-600"
+                            disabled={!!receipt}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                     );
@@ -1248,17 +1406,19 @@ export default function GroomingAppointmentDetailPage() {
                           <>
                             <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-600">Bundles</div>
                             {bundles.map(b => (
-                              <SelectItem key={`bundle:${b.id}`} value={`bundle:${b.id}`}>
+                              <SelectItem key={`bundle:${b.id}`} value={`bundle:${b.id}`} disabled={presentBundleIds.has(b.id)}>
                                 {b.name} · {formatPrice(b.bundle_price, currency)}
                                 <span className="ml-1 text-[10px] text-violet-500">bundle</span>
+                                {presentBundleIds.has(b.id) && <span className="ml-1 text-[10px] text-slate-400">already added</span>}
                               </SelectItem>
                             ))}
                             <div className="px-2 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 border-t border-slate-100">Individual services</div>
                           </>
                         )}
                         {services.map(s => (
-                          <SelectItem key={s.id} value={s.id}>
+                          <SelectItem key={s.id} value={s.id} disabled={presentServiceIds.has(s.id)}>
                             {s.name} · {formatPrice(s.price, currency)} ({s.duration_minutes} min)
+                            {presentServiceIds.has(s.id) && <span className="ml-1 text-[10px] text-slate-400">already added</span>}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1294,8 +1454,8 @@ export default function GroomingAppointmentDetailPage() {
                       className="w-16"
                     />
                   </div>
-                  <Button onClick={handleAddService} disabled={!addServiceId || !addStaffId} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                    <Plus className="h-4 w-4 mr-1" /> Add
+                  <Button onClick={() => handleAddService(false)} disabled={!addServiceId || !addStaffId || adding} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                    <Plus className="h-4 w-4 mr-1" /> {adding ? 'Adding...' : 'Add'}
                   </Button>
                 </div>
               </CardContent>
@@ -1562,12 +1722,7 @@ export default function GroomingAppointmentDetailPage() {
                       <span className="text-slate-500">Subtotal</span>
                       <span>{formatPrice(receipt.subtotal, displayCurrency)}</span>
                     </div>
-                    {receipt.tax_rate > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Tax ({receipt.tax_rate}%)</span>
-                        <span>{formatPrice(receipt.tax_amount, displayCurrency)}</span>
-                      </div>
-                    )}
+                    {/* Discount before tax: tax is charged on the discounted amount (bug receipt_tax_line_before_discount) */}
                     {receipt.discount_amount > 0 && (
                       <div className="flex justify-between text-sm text-green-600">
                         <span>
@@ -1577,6 +1732,12 @@ export default function GroomingAppointmentDetailPage() {
                         <span>- {formatPrice(receipt.discount_amount, displayCurrency)}</span>
                       </div>
                     )}
+                    {receipt.tax_rate > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-500">Tax ({receipt.tax_rate}%)</span>
+                        <span>{formatPrice(receipt.tax_amount, displayCurrency)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between font-bold text-base border-t pt-2">
                       <span>Total</span>
                       <span>{formatPrice(receipt.total, displayCurrency)}</span>
@@ -1584,9 +1745,35 @@ export default function GroomingAppointmentDetailPage() {
                   </div>
                   <div className="flex justify-between text-sm mt-2">
                     <span className="text-slate-500">Payment</span>
-                    <span className="capitalize">{receipt.payment_method} · {receipt.payment_status}</span>
+                    <span>{paymentMethodLabel(receipt.payment_method)} · <span className="capitalize">{receipt.payment_status}</span></span>
                   </div>
                 </div>
+
+                {/* bug pending_receipt_cannot_be_settled: record the payment of a pending
+                    or part-paid receipt (same receipt, same number and amounts) */}
+                {['pending', 'partial'].includes(receipt.payment_status) && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 flex flex-wrap items-end gap-3" data-testid="settle-receipt">
+                    <div className="text-sm text-amber-800 flex-1 min-w-[180px]">
+                      Payment {receipt.payment_status === 'partial' ? 'partly received' : 'not received yet'}.
+                    </div>
+                    <div>
+                      <Label className="text-xs">Paid by</Label>
+                      <Select value={settleMethod} onValueChange={setSettleMethod}>
+                        <SelectTrigger className="h-9 w-[130px] mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="card">Card</SelectItem>
+                          <SelectItem value="bank_transfer">Bank transfer</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button onClick={handleSettleReceipt} disabled={settling}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                      <Check className="h-4 w-4 mr-1.5" /> {settling ? 'Saving...' : 'Mark as Paid'}
+                    </Button>
+                  </div>
+                )}
 
                 {/* Download / Print */}
                 <div className="flex gap-3">
@@ -1729,12 +1916,6 @@ export default function GroomingAppointmentDetailPage() {
                       <span className="text-slate-500">Subtotal</span>
                       <span>{formatPrice(subtotal, currency)}</span>
                     </div>
-                    {taxAmount > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-500">Tax ({receiptForm.tax_rate}%)</span>
-                        <span>{formatPrice(taxAmount, currency)}</span>
-                      </div>
-                    )}
                     {discountAmount > 0 && (
                       <div className="flex justify-between text-green-600">
                         <span>
@@ -1746,6 +1927,12 @@ export default function GroomingAppointmentDetailPage() {
                         <span>- {formatPrice(discountAmount, currency)}</span>
                       </div>
                     )}
+                    {taxAmount > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Tax ({receiptForm.tax_rate}%)</span>
+                        <span>{formatPrice(taxAmount, currency)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between font-bold text-base border-t pt-2 mt-2">
                       <span>Grand Total</span>
                       <span className="text-primary">{formatPrice(grandTotal, currency)}</span>
@@ -1753,13 +1940,20 @@ export default function GroomingAppointmentDetailPage() {
                   </div>
                 )}
 
+                {['cancelled', 'no_show', 'transferred'].includes(appt?.status) && (
+                  <p className="text-xs text-amber-600" data-testid="receipt-dead-status">
+                    This appointment is {appt.status.replace('_', ' ')}: restore it before billing.
+                  </p>
+                )}
                 <Button
                   onClick={onClickGenerateReceipt}
-                  disabled={apptServices.length === 0}
+                  disabled={apptServices.length === 0 || generatingReceipt
+                    || ['cancelled', 'no_show', 'transferred'].includes(appt?.status)}
                   className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg w-full sm:w-auto"
                 >
                   <Receipt className="h-4 w-4 mr-1.5" />
-                  {receiptForm.payment_method === 'terminal' ? 'Charge Terminal & Generate Receipt' : 'Generate Receipt'}
+                  {generatingReceipt ? 'Generating...'
+                    : receiptForm.payment_method === 'terminal' ? 'Charge Terminal & Generate Receipt' : 'Generate Receipt'}
                 </Button>
               </CardContent>
             </Card>

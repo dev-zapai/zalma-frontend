@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/shared/lib/api';
 import { assetUrl } from '@/shared/lib/assets';
@@ -12,8 +12,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/shared/components/ui/badge';
 import { Plus, Search, PawPrint, TrendingUp, Scissors, Calendar, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { listItems } from '@/shared/lib/listResponse';
-import { differenceInYears, differenceInMonths, parseISO, isBefore } from 'date-fns';
+import { listItems, listMeta } from '@/shared/lib/listResponse';
+import ClientPicker from '@/shared/components/ClientPicker';
+import { useCursorPager } from '@/shared/hooks/useCursorPager';
+import { differenceInYears, differenceInMonths, parseISO, format } from 'date-fns';
 
 const SPECIES_OPTIONS = ['Dog', 'Cat', 'Rabbit', 'Bird', 'Guinea Pig', 'Hamster', 'Fish', 'Reptile', 'Other'];
 const FLAG_OPTIONS = ['aggressive', 'senior', 'anxious', 'first_visit', 'matting', 'medical'];
@@ -55,7 +57,7 @@ export default function PetsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [pets, setPets] = useState([]);
-  const [clients, setClients] = useState([]);
+  const [ownerLabel, setOwnerLabel] = useState('');
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ name: '', species: '', breed: '', gender: '', owner_id: '', weight: '', color: '', notes: '', allergy: '', special_flag: '' });
@@ -71,13 +73,20 @@ export default function PetsPage() {
   // "Booked on <day>": set by the Overview tiles; cleared from the chip.
   const [bookedOn, setBookedOn] = useState(searchParams.get('booked_on') || '');
 
-  // Sort
-  const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || 'name');
+  // Sort: name only (fix 04, decision 6)
+  const sortBy = 'name';
   const [sortDir, setSortDir] = useState(searchParams.get('sort_dir') || 'asc');
 
-  // Pagination
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  // Pagination: cursor (fix 04)
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null);
+  const pager = useCursorPager({
+    filterKey: `${search}|${speciesFilter}|${flagFilter}|${newPetFilter}|${desexedFilter}|${vaccinationFilter}|${bookedOn}|${sortDir}`,
+  });
+  // The fetch falls back to page 1 through a ref, so the reset (which changes
+  // with the URL) does not re-create the fetch on every URL write.
+  const resetPagerRef = useRef(pager.reset);
+  resetPagerRef.current = pager.reset;
 
   const fetchKpis = useCallback(async () => {
     try {
@@ -88,8 +97,9 @@ export default function PetsPage() {
 
   const fetchPets = useCallback(async () => {
     try {
-      const params = { page, sort_by: sortBy, sort_dir: sortDir };
-      if (search) params.search = search;
+      const params = { limit: 20, sort_by: sortBy, sort_dir: sortDir };
+      if (pager.cursor) params.cursor = pager.cursor;
+      if (search) params.q = search;
       if (speciesFilter !== 'all') params.species = speciesFilter;
       if (flagFilter !== 'all') params.special_flag = flagFilter;
       if (newPetFilter === 'new') params.is_new_pet = true;
@@ -99,45 +109,49 @@ export default function PetsPage() {
       if (vaccinationFilter === 'up_to_date') params.vaccination_expired = 'false';
       if (bookedOn) params.booked_on = bookedOn;
       const res = await api.get('/pets', { params });
+      const meta = listMeta(res.data);
       setPets(listItems(res.data));
-      if (res.data?.total_pages) setTotalPages(res.data.total_pages);
-    } catch (e) { console.error(e); }
+      setHasMore(meta.hasMore);
+      setNextCursor(meta.nextCursor);
+    } catch (e) {
+      console.error(e);
+      // A cursor the server rejects (from another filter, an old link, Back)
+      // falls back to page 1 instead of an empty list (bug stale_cursor_in_url_after_filter_change).
+      if (e?.response?.status === 400 && pager.cursor) { resetPagerRef.current(); return; }
+    }
     setLoading(false);
-  }, [search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, bookedOn, sortBy, sortDir, page]);
+  }, [search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, bookedOn, sortBy, sortDir, pager.cursor]);
 
-  const fetchClients = useCallback(async () => {
-    try {
-      const res = await api.get('/clients', { params: { limit: 200 } });
-      setClients(listItems(res.data));
-    } catch (e) { console.error(e); }
-  }, []);
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
   useEffect(() => { fetchPets(); }, [fetchPets]);
-  useEffect(() => { fetchClients(); }, [fetchClients]);
 
-  // Sync filters to URL
+  // Sync filters to URL. When the filters changed since the last sync, the
+  // old page's cursor goes too: this write runs after the pager's reset and
+  // would otherwise put the stale cursor back (bug stale_cursor_in_url_after_filter_change).
+  const lastFilterSig = useRef(null);
   useEffect(() => {
-    const p = new URLSearchParams();
+    const p = new URLSearchParams(searchParams);
+    const sig = JSON.stringify([search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, bookedOn, sortDir]);
+    if (lastFilterSig.current !== null && lastFilterSig.current !== sig) p.delete('cursor');
+    lastFilterSig.current = sig;
+    for (const k of ['search', 'species', 'flag', 'new_pet', 'desexed', 'vaccination', 'sort_by', 'sort_dir', 'booked_on']) p.delete(k);
     if (search) p.set('search', search);
     if (speciesFilter !== 'all') p.set('species', speciesFilter);
     if (flagFilter !== 'all') p.set('flag', flagFilter);
     if (newPetFilter !== 'all') p.set('new_pet', newPetFilter);
     if (desexedFilter !== 'all') p.set('desexed', desexedFilter);
     if (vaccinationFilter !== 'all') p.set('vaccination', vaccinationFilter);
-    if (sortBy !== 'name') p.set('sort_by', sortBy);
     if (sortDir !== 'asc') p.set('sort_dir', sortDir);
     if (bookedOn) p.set('booked_on', bookedOn);
     setSearchParams(p, { replace: true });
-  }, [search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, bookedOn, sortBy, sortDir, setSearchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, speciesFilter, flagFilter, newPetFilter, desexedFilter, vaccinationFilter, bookedOn, sortDir, setSearchParams]);
 
+  // Only the name column sorts (one index); clicking it flips the direction.
   const handleSort = (col) => {
-    if (sortBy === col) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(col);
-      setSortDir('asc');
-    }
+    if (col !== 'name') return;
+    setSortDir(d => d === 'asc' ? 'desc' : 'asc');
   };
 
   const SortArrow = ({ col }) => {
@@ -166,9 +180,7 @@ export default function PetsPage() {
       return;
     }
     if (!form.owner_id) {
-      toast.error(clients.length === 0
-        ? 'No clients yet - add the owner on the Clients page first, then add their pet.'
-        : 'Please select the pet’s owner');
+      toast.error('Choose the owner first (type a name or phone to find them).');
       return;
     }
     setSaving(true);
@@ -193,7 +205,8 @@ export default function PetsPage() {
     }
   };
 
-  const today = new Date();
+  // Bug vacc_expiry_day_shown_expired: a vaccination is current through its expiry day, as on the backend
+  const todayISO = format(new Date(), 'yyyy-MM-dd');
 
   // KPI card definitions
   const kpiCards = kpis ? [
@@ -317,19 +330,11 @@ export default function PetsPage() {
                   <TableHead className="cursor-pointer select-none" onClick={() => handleSort('name')}>
                     Pet <SortArrow col="name" />
                   </TableHead>
-                  <TableHead className="cursor-pointer select-none" onClick={() => handleSort('species')}>
-                    Species / Breed <SortArrow col="species" />
-                  </TableHead>
-                  <TableHead className="cursor-pointer select-none hidden md:table-cell" onClick={() => handleSort('owner')}>
-                    Owner <SortArrow col="owner" />
-                  </TableHead>
-                  <TableHead className="cursor-pointer select-none hidden lg:table-cell" onClick={() => handleSort('date_of_birth')}>
-                    Age <SortArrow col="date_of_birth" />
-                  </TableHead>
+                  <TableHead>Species / Breed</TableHead>
+                  <TableHead className="hidden md:table-cell">Owner</TableHead>
+                  <TableHead className="hidden lg:table-cell">Age</TableHead>
                   <TableHead className="hidden lg:table-cell">Tags</TableHead>
-                  <TableHead className="cursor-pointer select-none hidden lg:table-cell" onClick={() => handleSort('weight')}>
-                    Weight <SortArrow col="weight" />
-                  </TableHead>
+                  <TableHead className="hidden lg:table-cell">Weight</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -396,7 +401,7 @@ export default function PetsPage() {
                               Not desexed
                             </Badge>
                           )}
-                          {p.vaccination_expiry && isBefore(parseISO(p.vaccination_expiry), today) && (
+                          {p.vaccination_expiry && p.vaccination_expiry.slice(0, 10) < todayISO && (
                             <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
                               Vacc expired
                             </Badge>
@@ -416,13 +421,13 @@ export default function PetsPage() {
       </Card>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {(hasMore || pager.canPrev) && (
         <div className="flex items-center justify-center gap-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+          <Button variant="outline" size="sm" disabled={!pager.canPrev || loading} onClick={pager.prev}>
             Previous
           </Button>
-          <span className="text-sm text-slate-600">Page {page} of {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+          <span className="text-sm text-slate-600">Page {pager.pageNumber}</span>
+          <Button variant="outline" size="sm" disabled={!hasMore || loading} onClick={() => pager.next(nextCursor)}>
             Next
           </Button>
         </div>
@@ -442,18 +447,8 @@ export default function PetsPage() {
               </div>
               <div>
                 <Label>Owner / Client *</Label>
-                <Select value={form.owner_id} onValueChange={v => setForm({ ...form, owner_id: v })}>
-                  <SelectTrigger className="mt-1.5"><SelectValue placeholder="Select owner" /></SelectTrigger>
-                  <SelectContent>
-                    {clients.length === 0 ? (
-                      <div className="px-3 py-2 text-xs text-slate-400">
-                        No clients yet - add the owner on the Clients page first.
-                      </div>
-                    ) : (
-                      clients.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)
-                    )}
-                  </SelectContent>
-                </Select>
+                <ClientPicker value={form.owner_id} valueLabel={ownerLabel}
+                              onSelect={(c) => { setForm({ ...form, owner_id: c ? c.id : '' }); setOwnerLabel(c ? c.full_name : ''); }} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

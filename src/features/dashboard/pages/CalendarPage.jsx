@@ -9,11 +9,12 @@ import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { Plus, ChevronLeft, ChevronRight, Clock, Check } from 'lucide-react';
 import { format, addDays, startOfWeek, isSameDay, parseISO } from 'date-fns';
-import { listItems } from '@/shared/lib/listResponse';
+import { listItems, fetchAllPages } from '@/shared/lib/listResponse';
+import ClientPicker from '@/shared/components/ClientPicker';
 
 export default function CalendarPage() {
   const [staffList, setStaffList] = useState([]);
-  const [clients, setClients] = useState([]);
+  const [clientLabel, setClientLabel] = useState('');
   const [services, setServices] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState('all');
@@ -31,14 +32,12 @@ export default function CalendarPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [s, sv, c] = await Promise.all([
+        const [s, sv] = await Promise.all([
           api.get('/staff', { params: { limit: 200 } }),
           api.get('/services', { params: { limit: 200 } }),
-          api.get('/clients', { params: { limit: 200 } }),
         ]);
         setStaffList(listItems(s.data));
         setServices(listItems(sv.data));
-        setClients(listItems(c.data));
       } catch (e) {
         console.error(e);
       }
@@ -46,17 +45,23 @@ export default function CalendarPage() {
     fetchData();
   }, []);
 
+  const [weekTruncated, setWeekTruncated] = useState(false);
+
   const fetchAppointments = useCallback(async () => {
     try {
       const params = { limit: 100 };
       if (selectedStaff !== 'all') params.staff_id = selectedStaff;
       params.date_from = format(weekStart, "yyyy-MM-dd'T'00:00:00");
       params.date_to = format(addDays(weekStart, 6), "yyyy-MM-dd'T'23:59:59");
-      const res = await api.get('/g/appointments', { params });
-      setAppointments(res.data.items || []);
+      // A week is a grid, not a list: follow cursors to the end of the week,
+      // capped at 500 appointments (decision 20).
+      const { items, truncated } = await fetchAllPages(api, '/g/appointments', params, { maxRows: 500 });
+      setAppointments(items);
+      setWeekTruncated(truncated);
     } catch (e) {
       console.error(e);
       setAppointments([]);
+      setWeekTruncated(false);
     }
   }, [selectedStaff, weekStart]);
 
@@ -89,6 +94,7 @@ export default function CalendarPage() {
 
   const openBookingDialog = () => {
     setForm({ staff_id: '', client_id: '', service_id: '', notes: '' });
+    setClientLabel('');
     setDuration(30);
     setBookingDate(null);
     setSelectedSlot(null);
@@ -159,6 +165,11 @@ export default function CalendarPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Calendar</h1>
           <p className="text-sm text-slate-500 mt-1">Staff-wise scheduling and availability</p>
+          {weekTruncated && (
+            <p className="text-xs text-amber-700 mt-1" data-testid="calendar-truncated">
+              This week has more than 500 appointments; only the first 500 are shown. Use the day view for the rest.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <Select value={selectedStaff} onValueChange={setSelectedStaff}>
@@ -363,14 +374,8 @@ export default function CalendarPage() {
                 </div>
                 <div>
                   <Label>Client *</Label>
-                  <Select value={form.client_id} onValueChange={(v) => setForm({ ...form, client_id: v })}>
-                    <SelectTrigger data-testid="appt-client-select" className="mt-1.5">
-                      <SelectValue placeholder="Select client" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map(p => <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <ClientPicker value={form.client_id} valueLabel={clientLabel}
+                                onSelect={(c) => { setForm({ ...form, client_id: c ? c.id : '' }); setClientLabel(c ? c.full_name : ''); }} />
                 </div>
                 <div>
                   <Label>Service (optional)</Label>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/shared/lib/api';
 import { assetUrl } from '@/shared/lib/assets';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
@@ -33,6 +33,7 @@ const STATUS_STYLES = {
 };
 
 const SPECIES_OPTIONS = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Guinea Pig', 'Hamster', 'Other'];
+const PET_TABS = ['overview', 'vaccination', 'registration'];
 
 function computeAge(dob) {
   if (!dob) return null;
@@ -54,13 +55,19 @@ function computeAge(dob) {
 export default function PetDetailPage() {
   const { petId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [pet, setPet] = useState(null);
   const [appointments, setAppointments] = useState([]);
+  // Bug pet_history_no_paging: the history endpoint pages 20 at a time
+  const [historyCursor, setHistoryCursor] = useState(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Active tab
-  const [activeTab, setActiveTab] = useState('overview');
+  // Active tab. Deep links (e.g. the "No vaccination info" notification) pass
+  // ?tab=vaccination so the page opens on the exact tab that needs attention.
+  const requestedTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(PET_TABS.includes(requestedTab) ? requestedTab : 'overview');
 
   // Pet edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -101,10 +108,12 @@ export default function PetDetailPage() {
       const [petRes, apptsRes, notesRes] = await Promise.all([
         api.get(`/pets/${petId}`),
         api.get(`/pets/${petId}/appointments`).catch(() => ({ data: [] })),
-        api.get('/grooming-notes', { params: { pet_id: petId, limit: 200 } }),
+        // Notes never take the whole page down (bug pet_detail_notes_limit_422)
+        api.get('/grooming-notes', { params: { pet_id: petId, limit: 100 } }).catch(() => ({ data: [] })),
       ]);
       setPet(petRes.data);
       setAppointments(listItems(apptsRes.data));
+      setHistoryCursor(apptsRes.data?.has_more ? apptsRes.data.next_cursor : null);
       setNotes(listItems(notesRes.data));
     } catch (e) {
       console.error(e);
@@ -114,6 +123,20 @@ export default function PetDetailPage() {
   }, [petId]);
 
   useEffect(() => { fetchPet(); fetchVaccinations(); fetchRegistrations(); }, [fetchPet, fetchVaccinations, fetchRegistrations]);
+
+  const loadOlderHistory = async () => {
+    if (!historyCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const res = await api.get(`/pets/${petId}/appointments`, { params: { cursor: historyCursor } });
+      const seen = new Set(appointments.map(a => a.id));
+      setAppointments(prev => [...prev, ...listItems(res.data).filter(a => !seen.has(a.id))]);
+      setHistoryCursor(res.data?.has_more ? res.data.next_cursor : null);
+    } catch {
+      toast.error('Failed to load older appointments');
+    }
+    setLoadingOlder(false);
+  };
 
   const openEditSection = (section) => {
     setEditSection(section);
@@ -128,7 +151,7 @@ export default function PetDetailPage() {
       microchip_id: pet?.microchip_id || '',
       allergy: pet?.allergy || '',
       medical_conditions: pet?.medical_conditions || '',
-      desexed_status: pet?.desexed_status ?? false,
+      desexed_status: pet?.desexed_status ?? null,          // unknown stays unknown (bug edit_records_unknown_desexed_as_no)
       special_flag: pet?.special_flag || '',
       is_new_pet: pet?.is_new_pet ?? true,
       vaccination_status: pet?.vaccination_status || '',
@@ -188,7 +211,7 @@ export default function PetDetailPage() {
       }
       setNoteDialogOpen(false);
       // refetch notes
-      const res = await api.get('/grooming-notes', { params: { pet_id: petId, limit: 200 } });
+      const res = await api.get('/grooming-notes', { params: { pet_id: petId, limit: 100 } });
       setNotes(listItems(res.data));
     } catch {
       toast.error('Failed to save note');
@@ -197,11 +220,15 @@ export default function PetDetailPage() {
   };
 
   const handleSavePet = async () => {
+    // A pet must keep its name and species (bug blank_required_field_removes_it).
+    if (!(editForm.name || '').trim()) { toast.error('Pet name is required'); return; }
+    if (!(editForm.species || '').trim()) { toast.error('Species is required'); return; }
     setSavingPet(true);
     try {
       await api.put(`/pets/${petId}`, {
-        name: editForm.name || null,
-        species: editForm.species || null,
+        name: editForm.name.trim(),
+        species: editForm.species,
+        tag_number: editForm.tag_number || null,              // bug edit_tag_number_not_saved
         breed: editForm.breed || null,
         gender: editForm.gender || null,
         weight: editForm.weight || null,
@@ -228,7 +255,8 @@ export default function PetDetailPage() {
       setEditDialogOpen(false);
       fetchPet();
     } catch (e) {
-      toast.error('Failed to update pet');
+      const d = e?.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Failed to update pet');
     }
     setSavingPet(false);
   };
@@ -378,11 +406,14 @@ export default function PetDetailPage() {
   };
 
   // ── Vaccination overall status ─────────────────────────────────────────
+  // Bug vacc_expiry_day_shown_expired: a document is current through its expiry
+  // day (local calendar day, as the backend filter and High Risk tile count it)
+  const todayISO = format(new Date(), 'yyyy-MM-dd');
+  const isPastDay = (d) => !!d && String(d).slice(0, 10) < todayISO;
   const vaccOverallStatus = (() => {
     if (vaccinations.length === 0) return 'none';
-    const today = new Date();
-    const hasExpired = vaccinations.some(v => v.expiry_date && new Date(v.expiry_date) < today);
-    const allValid = vaccinations.every(v => !v.expiry_date || new Date(v.expiry_date) >= today);
+    const hasExpired = vaccinations.some(v => isPastDay(v.expiry_date));
+    const allValid = vaccinations.every(v => !isPastDay(v.expiry_date));
     if (hasExpired) return 'expired';
     if (allValid) return 'valid';
     return 'partial';
@@ -390,8 +421,7 @@ export default function PetDetailPage() {
 
   const regOverallStatus = (() => {
     if (registrations.length === 0) return 'none';
-    const today = new Date();
-    const hasExpired = registrations.some(r => r.expiry_date && new Date(r.expiry_date) < today);
+    const hasExpired = registrations.some(r => isPastDay(r.expiry_date));
     if (hasExpired) return 'expired';
     return 'valid';
   })();
@@ -468,7 +498,7 @@ export default function PetDetailPage() {
         </Card>
         <Card className="rounded-xl border-slate-200/60">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-slate-900">{appointments.length}</p>
+            <p className="text-2xl font-bold text-slate-900">{appointments.length}{historyCursor ? '+' : ''}</p>
             <p className="text-xs text-slate-500 mt-0.5">Appointments</p>
           </CardContent>
         </Card>
@@ -658,7 +688,7 @@ export default function PetDetailPage() {
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-primary" /> Appointment History
-                <span className="text-xs text-slate-400 font-normal">({appointments.length})</span>
+                <span className="text-xs text-slate-400 font-normal">({appointments.length}{historyCursor ? '+' : ''})</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -671,13 +701,20 @@ export default function PetDetailPage() {
                     return (
                       <div key={a.id} className="flex items-center gap-4 p-3 rounded-lg border border-slate-100 hover:bg-slate-50/80 cursor-pointer transition-colors" onClick={() => navigate(`/dashboard/appointments/${a.id}/detail`)}>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900">{start ? format(start, 'MMM d, yyyy · h:mm a') : '\u2014'}</p>
+                          <p className="text-sm font-medium text-slate-900">{start ? format(start, 'MMM d, yyyy · h:mm a') : '-'}</p>
                           <p className="text-xs text-slate-500">{a.staff?.full_name || 'Unassigned'}{a.service?.name && ` · ${a.service.name}`}</p>
                         </div>
                         <Badge className={`rounded-full text-xs ${STATUS_STYLES[a.status] || 'bg-slate-100 text-slate-700'}`}>{a.status?.replace('_', ' ')}</Badge>
                       </div>
                     );
                   })}
+                  {historyCursor && (
+                    <div className="text-center pt-2">
+                      <Button variant="outline" size="sm" className="rounded-xl" onClick={loadOlderHistory} disabled={loadingOlder}>
+                        {loadingOlder ? 'Loading...' : 'Show older appointments'}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -708,7 +745,7 @@ export default function PetDetailPage() {
 
           {/* Vaccination Records */}
           {vaccinations.map(v => {
-            const isExpired = v.expiry_date && new Date(v.expiry_date) < new Date();
+            const isExpired = isPastDay(v.expiry_date);
             return (
               <Card key={v.id} className={`rounded-xl ${isExpired ? 'border-red-200' : 'border-slate-200/60'}`}>
                 <CardContent className="p-5">
@@ -889,7 +926,7 @@ export default function PetDetailPage() {
 
           {/* Registration Records */}
           {registrations.map(r => {
-            const isExpired = r.expiry_date && new Date(r.expiry_date) < new Date();
+            const isExpired = isPastDay(r.expiry_date);
             return (
               <Card key={r.id} className={`rounded-xl ${isExpired ? 'border-red-200' : 'border-slate-200/60'}`}>
                 <CardContent className="p-5">
@@ -1242,7 +1279,7 @@ function InfoRow({ label, value }) {
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
       <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm font-medium text-slate-900">{value || <span className="text-slate-300">{'\u2014'}</span>}</span>
+      <span className="text-sm font-medium text-slate-900">{value || <span className="text-slate-300">-</span>}</span>
     </div>
   );
 }

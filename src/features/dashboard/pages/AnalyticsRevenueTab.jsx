@@ -15,15 +15,13 @@ export default function AnalyticsRevenueTab({ currency, days, customRange }) {
   const [popularServices, setPopularServices] = useState([]);
 
   useEffect(() => {
-    api.get('/g/analytics/popular-services')
-      .then(r => setPopularServices(r.data))
-      .catch(e => console.error(e));
-  }, []);
-
-  useEffect(() => {
     const params = customRange
       ? { from_date: customRange.from, to_date: customRange.to }
       : { days };
+    // Both charts respect the shared period filter (backend fix 08).
+    api.get('/g/analytics/popular-services', { params })
+      .then(r => setPopularServices(r.data))
+      .catch(e => console.error(e));
     api.get('/g/analytics/revenue-breakdown', { params })
       .then(r => setData(r.data))
       .catch(e => console.error(e));

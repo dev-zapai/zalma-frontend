@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import {
   ArrowLeft, User, Calendar, PawPrint,
   Phone, Mail, MapPin, Plus, TrendingUp, Clock, Receipt, Edit2, DollarSign, Star, CalendarClock,
-  MessageSquare
+  MessageSquare, ArchiveRestore
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
@@ -34,6 +34,10 @@ export default function ClientDetailPage() {
   const [client, setClient] = useState(null);
   const [pets, setPets] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  // Bug appointments_count_capped_200: the count is the server's total, and older pages load on request
+  const [apptTotal, setApptTotal] = useState(0);
+  const [apptPage, setApptPage] = useState(1);
+  const [loadingMoreAppts, setLoadingMoreAppts] = useState(false);
   const [currency, setCurrency] = useState('AUD');
   const [loading, setLoading] = useState(true);
   const [petDialogOpen, setPetDialogOpen] = useState(false);
@@ -64,11 +68,38 @@ export default function ClientDetailPage() {
       setClient(clientRes.data);
       setPets(listItems(petsRes.data));
       setAppointments(listItems(apptsRes.data));
+      setApptTotal(apptsRes.data?.total ?? listItems(apptsRes.data).length);
+      setApptPage(1);
       setCurrency(tenantRes.data.settings?.currency || 'AUD');
       setCommunications(Array.isArray(commsRes.data) ? commsRes.data : []);
     } catch (e) { console.error(e); }
     setLoading(false);
   }, [clientId]);
+
+  const loadMoreAppointments = async () => {
+    setLoadingMoreAppts(true);
+    try {
+      const next = apptPage + 1;
+      const res = await api.get(`/clients/${clientId}/appointments`, { params: { limit: 200, page: next } });
+      const seen = new Set(appointments.map(a => a.id));
+      setAppointments(prev => [...prev, ...listItems(res.data).filter(a => !seen.has(a.id))]);
+      setApptPage(next);
+    } catch (e) { console.error(e); toast.error('Failed to load more appointments'); }
+    setLoadingMoreAppts(false);
+  };
+
+  // Bug no_unarchive_control: an archived client can be restored here
+  const handleUnarchive = async () => {
+    try {
+      await api.post('/clients/bulk-action', { action: 'unarchive', client_ids: [clientId] });
+      toast.success('Client unarchived');
+      fetchData();
+    } catch (e) {
+      console.error(e);
+      const detail = e?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Failed to unarchive client');
+    }
+  };
 
   const fetchFinancials = useCallback(async () => {
     setFinancialsLoading(true);
@@ -128,7 +159,12 @@ export default function ClientDetailPage() {
       setCommDialogOpen(false);
       setCommForm({ channel: 'sms', recipient: '', subject: '', body: '' });
       fetchData();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      // Bug silent_failures: a failed log used to close nothing and say nothing
+      const detail = e?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Failed to log communication');
+    }
     setSavingComm(false);
   };
 
@@ -160,6 +196,9 @@ export default function ClientDetailPage() {
   };
 
   const handleSaveClient = async () => {
+    // A client must keep a name and a phone (bug blank_required_field_removes_it).
+    if (!(editForm.full_name || '').trim()) { toast.error('Full name is required'); return; }
+    if (!(editForm.phone || '').trim()) { toast.error('Phone is required'); return; }
     setSavingClient(true);
     try {
       const cleanValueFlag = (!editForm.value_flag || editForm.value_flag === 'none') ? null : editForm.value_flag;
@@ -185,7 +224,11 @@ export default function ClientDetailPage() {
       });
       setEditDialogOpen(false);
       fetchData();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      // bug silent_failures: say why the save did not happen
+      const d = e?.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : 'Could not save the client. Please try again.');
+    }
     setSavingClient(false);
   };
 
@@ -257,6 +300,9 @@ export default function ClientDetailPage() {
                       <Star className="h-3 w-3 mr-1" />VIP
                     </Badge>
                   )}
+                  {client.is_archived && (
+                    <Badge className="rounded-full text-xs bg-slate-100 text-slate-600 border border-slate-200">Archived</Badge>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mt-0.5">
                   {client.phone && <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" /> {client.phone}</span>}
@@ -281,6 +327,11 @@ export default function ClientDetailPage() {
               </div>
             </div>
             <div className="sm:ml-auto flex gap-2">
+              {client.is_archived && (
+                <Button size="sm" variant="outline" onClick={handleUnarchive}>
+                  <ArchiveRestore className="h-4 w-4 mr-1.5" /> Unarchive
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={() => navigate(`/dashboard/appointments/new?client_id=${clientId}`)}
@@ -319,7 +370,7 @@ export default function ClientDetailPage() {
         <Card className="rounded-xl border-slate-200/60">
           <CardContent className="p-4 text-center">
             <Calendar className="h-5 w-5 mx-auto mb-1 text-primary" />
-            <p className="text-2xl font-bold text-primary">{appointments.length}</p>
+            <p className="text-2xl font-bold text-primary">{apptTotal}</p>
             <p className="text-xs text-slate-500 mt-0.5">Appointments</p>
           </CardContent>
         </Card>
@@ -351,7 +402,7 @@ export default function ClientDetailPage() {
       <Tabs defaultValue="pets">
         <TabsList>
           <TabsTrigger value="pets" className="gap-1.5"><PawPrint className="h-4 w-4" /> Pets ({pets.length})</TabsTrigger>
-          <TabsTrigger value="appointments" className="gap-1.5"><Calendar className="h-4 w-4" /> Appointments ({appointments.length})</TabsTrigger>
+          <TabsTrigger value="appointments" className="gap-1.5"><Calendar className="h-4 w-4" /> Appointments ({apptTotal})</TabsTrigger>
           <TabsTrigger value="financial" className="gap-1.5" onClick={() => { if (!financials) fetchFinancials(); }}><DollarSign className="h-4 w-4" /> Financial</TabsTrigger>
           <TabsTrigger value="communications" className="gap-1.5"><MessageSquare className="h-4 w-4" /> Communications ({communications.length})</TabsTrigger>
         </TabsList>
@@ -445,6 +496,14 @@ export default function ClientDetailPage() {
                   ))}
                 </TableBody>
               </Table>
+              {appointments.length < apptTotal && (
+                <div className="flex items-center justify-center gap-3 py-3 border-t border-slate-100">
+                  <span className="text-xs text-slate-500">Showing the latest {appointments.length} of {apptTotal}</span>
+                  <Button size="sm" variant="outline" onClick={loadMoreAppointments} disabled={loadingMoreAppts}>
+                    {loadingMoreAppts ? 'Loading...' : 'Load older'}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -48,6 +48,7 @@ export default function NewGroomingAppointmentPage() {
   const [clientName, setClientName] = useState('');
   const [petName, setPetName] = useState('');
   const [petSpecies, setPetSpecies] = useState('dog');
+  const newClientPetSpecies = petSpecies;     // readable inside blocks that shadow petSpecies
 
   // Services
   const [allServices, setAllServices] = useState([]);
@@ -178,16 +179,21 @@ export default function NewGroomingAppointmentPage() {
   // and availability — see backend `_try_allocate_multi`.
   useEffect(() => {
     if (!selectedDate || selectedServices.length === 0) { setSlots([]); return; }
+    // bug wizard_slot_race: a slow answer for an earlier date must not land
+    // on top of the date now selected.
+    let stale = false;
     setLoadingSlots(true);
     setSelectedSlot(null);
     api.get('/g/appointments/multi-auto-slots', {
       params: {
         date: selectedDate,
         service_ids: selectedServices.join(','),
+        ...(selectedPet?.id ? { pet_id: selectedPet.id } : {}),   // bug wizard_slots_ignore_pet
       }
     }).then(res => {
-      setSlots(res.data || []);
+      if (!stale) setSlots(res.data || []);
     }).catch(err => {
+      if (stale) return;
       // A server error is NOT the same as a fully booked day - say so,
       // instead of silently showing "No slots available".
       console.error(err);
@@ -195,8 +201,9 @@ export default function NewGroomingAppointmentPage() {
       toast.error(typeof detail === 'string' ? detail : 'Could not load available slots. Please try again.');
       setSlots([]);
     })
-      .finally(() => setLoadingSlots(false));
-  }, [selectedDate, selectedServices]);
+      .finally(() => { if (!stale) setLoadingSlots(false); });
+    return () => { stale = true; };
+  }, [selectedDate, selectedServices, selectedPet?.id]);
 
   // When the chosen date has nothing free, look ahead for the first
   // bookable slot so the admin gets an answer instead of a dead end.
@@ -541,7 +548,8 @@ export default function NewGroomingAppointmentPage() {
             <p className="text-sm text-slate-500">Select one or more services for this appointment.</p>
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {(() => {
-                const petSpecies = (selectedPet?.species || newPetSpecies || '').toLowerCase();
+                // bug wizard_new_client_species: a walk-in client's pet species is petSpecies; newPetSpecies belongs to "add a pet" on an existing client
+                const petSpecies = (selectedPet?.species || (isNewClient ? newClientPetSpecies : newPetSpecies) || '').toLowerCase();
                 const speciesList = (svc) => {
                   // compatible_species is a JSON array from the API; be
                   // defensive about a raw JSON string from older rows.

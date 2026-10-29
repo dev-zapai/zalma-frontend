@@ -8,6 +8,7 @@ import { ArrowLeft } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatPrice, getCurrencySymbol } from '@/shared/lib/currency';
 import DownloadReceipt from '@/shared/components/DownloadReceipt';
+import { paymentMethodLabel, paymentHeading } from '@/shared/lib/receiptLabels';
 
 /**
  * ReceiptViewPage - HTML mirror of ServiceReceiptPDF.
@@ -69,10 +70,8 @@ export default function ReceiptViewPage() {
     ? format(parseISO(receipt.created_at), 'dd MMM yyyy, h:mm a')
     : format(new Date(), 'dd MMM yyyy');
 
-  const paymentMethodDisplay = {
-    cash: 'Cash', card: 'Credit / Debit Card', upi: 'UPI', bank_transfer: 'Bank Transfer',
-    online: 'Online Payment', other: 'Other',
-  }[receipt.payment_method] || receipt.payment_method || '-';
+  const paymentMethodDisplay = paymentMethodLabel(receipt.payment_method);
+  const isPaid = receipt.payment_status === 'paid';
 
   // Groomer names — from per-service staff, fallback to appointment-level staff
   const staffNames = [...new Set(
@@ -218,16 +217,17 @@ export default function ReceiptViewPage() {
               <span className="text-slate-500">Subtotal</span>
               <span className="text-slate-700">{fmt(receipt.subtotal)}</span>
             </div>
-            {parseFloat(receipt.tax_rate) > 0 && (
-              <div className="flex justify-between py-1 text-sm">
-                <span className="text-slate-500">Tax ({receipt.tax_rate}%)</span>
-                <span className="text-slate-700">{fmt(receipt.tax_amount)}</span>
-              </div>
-            )}
+            {/* Discount before tax: tax is charged on the discounted amount (bug receipt_tax_line_before_discount) */}
             {parseFloat(receipt.discount_amount) > 0 && (
               <div className="flex justify-between py-1 text-sm">
                 <span className="text-green-600">Discount</span>
                 <span className="text-green-600">- {fmt(receipt.discount_amount)}</span>
+              </div>
+            )}
+            {parseFloat(receipt.tax_rate) > 0 && (
+              <div className="flex justify-between py-1 text-sm">
+                <span className="text-slate-500">Tax ({receipt.tax_rate}%)</span>
+                <span className="text-slate-700">{fmt(receipt.tax_amount)}</span>
               </div>
             )}
             <div className="flex justify-between py-2 mt-1 border-t border-slate-900 text-base">
@@ -237,11 +237,11 @@ export default function ReceiptViewPage() {
           </div>
 
           {/* ── PAYMENT ── matches PDF paymentBox */}
-          <div className="bg-green-50 rounded-md px-3 py-2 mb-6 flex items-center gap-2 text-sm">
-            <span className="text-xs text-green-700 font-semibold">Paid by:</span>
-            <span className="font-bold text-green-800">{paymentMethodDisplay}</span>
+          <div className={`${isPaid ? 'bg-green-50' : 'bg-amber-50'} rounded-md px-3 py-2 mb-6 flex items-center gap-2 text-sm`}>
+            <span className={`text-xs font-semibold ${isPaid ? 'text-green-700' : 'text-amber-700'}`}>{paymentHeading(receipt.payment_status)}</span>
+            <span className={`font-bold ${isPaid ? 'text-green-800' : 'text-amber-800'}`}>{paymentMethodDisplay}</span>
             {receipt.notes && (
-              <span className="text-xs text-green-600 ml-3">Note: {receipt.notes}</span>
+              <span className={`text-xs ml-3 ${isPaid ? 'text-green-600' : 'text-amber-600'}`}>Note: {receipt.notes}</span>
             )}
           </div>
 

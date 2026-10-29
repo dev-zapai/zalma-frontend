@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '@/shared/lib/api';
 import { Card, CardContent, CardHeader } from '@/shared/components/ui/card';
@@ -11,11 +11,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/components/ui/table';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { Checkbox } from '@/shared/components/ui/checkbox';
-import { Plus, Search, User, Mail, Phone, Edit, Trash2, Users, TrendingUp, UserPlus, Calendar, DollarSign, Star, ArrowUp, ArrowDown, MessageSquare, Archive } from 'lucide-react';
+import { Plus, Search, User, Mail, Phone, Edit, Trash2, Users, TrendingUp, UserPlus, Calendar, DollarSign, Star, ArrowUp, ArrowDown, MessageSquare, Archive, ArchiveRestore } from 'lucide-react';
 import { toast } from 'sonner';
-import { listItems } from '@/shared/lib/listResponse';
+import { listItems, listMeta } from '@/shared/lib/listResponse';
+import { useCursorPager } from '@/shared/hooks/useCursorPager';
 import AuAddressForm from '@/shared/components/AuAddressForm';
-import { format, parseISO, differenceInDays } from 'date-fns';
+import { format, parseISO, addDays } from 'date-fns';
 import { formatPrice } from '@/shared/lib/currency';
 
 export default function ClientsPage() {
@@ -32,20 +33,31 @@ export default function ClientsPage() {
   // Filters
   const [vipFilter, setVipFilter] = useState(searchParams.get('vip') || 'all');
   const [newClientFilter, setNewClientFilter] = useState(searchParams.get('new_client') || 'all');
-  const [rebookingFilter, setRebookingFilter] = useState(searchParams.get('rebooking_due') || 'all');
+  // all | due_this_week | overdue (fix 03); 'due' is the old URL value
+  const [rebookingFilter, setRebookingFilter] = useState(() => {
+    const v = searchParams.get('rebooking') || searchParams.get('rebooking_due') || 'all';
+    return v === 'due' || v === 'true' ? 'due_this_week' : v;
+  });
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'all');
   // Deep-link filter from Mission Control ("N clients need profile completion")
   const registrationFilter = searchParams.get('registration') || '';
   // "Booked on <day>": set by the Overview tiles; cleared from the chip.
   const [bookedOn, setBookedOn] = useState(searchParams.get('booked_on') || '');
 
-  // Sort
-  const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || 'name');
+  // Sort: name only (fix 03, decision 3)
+  const sortBy = 'name';
   const [sortDir, setSortDir] = useState(searchParams.get('sort_dir') || 'asc');
 
-  // Pagination
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  // Pagination: cursor (fix 03)
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null);
+  const pager = useCursorPager({
+    filterKey: `${search}|${vipFilter}|${newClientFilter}|${rebookingFilter}|${statusFilter}|${registrationFilter}|${bookedOn}|${sortDir}`,
+  });
+  // The fetch falls back to page 1 through a ref, so the reset (which changes
+  // with the URL) does not re-create the fetch on every URL write.
+  const resetPagerRef = useRef(pager.reset);
+  resetPagerRef.current = pager.reset;
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -65,53 +77,75 @@ export default function ClientsPage() {
 
   const fetchClients = useCallback(async () => {
     try {
-      const params = { page, sort_by: sortBy, sort_dir: sortDir };
-      if (search) params.search = search;
+      const params = { limit: 20, sort_by: sortBy, sort_dir: sortDir };
+      if (pager.cursor) params.cursor = pager.cursor;
+      if (search) params.q = search;
       if (vipFilter === 'vip') params.vip = true;
       if (vipFilter === 'regular') params.vip = false;
       if (newClientFilter === 'new') params.new_client = true;
-      if (rebookingFilter === 'due') params.rebooking_due = true;
+      if (rebookingFilter !== 'all') params.rebooking = rebookingFilter;
       if (statusFilter === 'active') params.active = true;
       if (statusFilter === 'inactive') params.active = false;
       if (statusFilter === 'archived') params.archived = true;
       if (registrationFilter) params.registration = registrationFilter;
       if (bookedOn) params.booked_on = bookedOn;
       const res = await api.get('/clients', { params });
-      setClients(listItems(res.data));
-      if (res.data?.total_pages) setTotalPages(res.data.total_pages);
-    } catch (e) { console.error(e); }
+      const meta = listMeta(res.data);
+      const items = listItems(res.data);
+      setClients(items);
+      // Bug selection_survives_paging: a selection never holds clients the user cannot see
+      setSelectedIds(prev => {
+        const visible = new Set(items.map(c => c.id));
+        const kept = [...prev].filter(id => visible.has(id));
+        return kept.length === prev.size ? prev : new Set(kept);
+      });
+      setHasMore(meta.hasMore);
+      setNextCursor(meta.nextCursor);
+    } catch (e) {
+      console.error(e);
+      // A cursor the server rejects (from another filter, an old link, Back)
+      // falls back to page 1 instead of an empty list (bug stale_cursor_in_url_after_filter_change).
+      if (e?.response?.status === 400 && pager.cursor) { resetPagerRef.current(); return; }
+    }
     setLoading(false);
-  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, bookedOn, sortBy, sortDir, page]);
+  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, bookedOn, sortBy, sortDir, pager.cursor]);
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
-  // Sync filters to URL
+  // Sync filters to URL. When the filters changed since the last sync, the
+  // old page's cursor goes too: this write runs after the pager's reset and
+  // would otherwise put the stale cursor back (bug stale_cursor_in_url_after_filter_change).
+  const lastFilterSig = useRef(null);
   useEffect(() => {
-    const p = new URLSearchParams();
+    const p = new URLSearchParams(searchParams);
+    const sig = JSON.stringify([search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, bookedOn, sortDir]);
+    if (lastFilterSig.current !== null && lastFilterSig.current !== sig) p.delete('cursor');
+    lastFilterSig.current = sig;
+    for (const k of ['search', 'vip', 'new_client', 'rebooking', 'rebooking_due', 'status', 'sort_by', 'sort_dir', 'registration', 'booked_on']) p.delete(k);
     if (search) p.set('search', search);
     if (vipFilter !== 'all') p.set('vip', vipFilter);
     if (newClientFilter !== 'all') p.set('new_client', newClientFilter);
-    if (rebookingFilter !== 'all') p.set('rebooking_due', rebookingFilter);
+    if (rebookingFilter !== 'all') p.set('rebooking', rebookingFilter);
     if (statusFilter !== 'all') p.set('status', statusFilter);
-    if (sortBy !== 'name') p.set('sort_by', sortBy);
     if (sortDir !== 'asc') p.set('sort_dir', sortDir);
     if (registrationFilter) p.set('registration', registrationFilter);
     if (bookedOn) p.set('booked_on', bookedOn);
     setSearchParams(p, { replace: true });
-  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, bookedOn, sortBy, sortDir, setSearchParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, vipFilter, newClientFilter, rebookingFilter, statusFilter, registrationFilter, bookedOn, sortDir, setSearchParams]);
 
+  // Only the name column sorts (one index); clicking it flips the direction.
+  // Rebooking lists come in due-date order and Active/Inactive in last-visit
+  // order, so there the header neither sorts nor shows an arrow (bug name_header_arrow_without_effect).
+  const nameSortApplies = rebookingFilter === 'all' && statusFilter !== 'active' && statusFilter !== 'inactive';
   const handleSort = (col) => {
-    if (sortBy === col) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(col);
-      setSortDir('asc');
-    }
+    if (col !== 'name' || !nameSortApplies) return;
+    setSortDir(d => d === 'asc' ? 'desc' : 'asc');
   };
 
   const SortArrow = ({ col }) => {
-    if (sortBy !== col) return null;
+    if (sortBy !== col || !nameSortApplies) return null;
     return sortDir === 'asc'
       ? <ArrowUp className="inline h-3 w-3 ml-1" />
       : <ArrowDown className="inline h-3 w-3 ml-1" />;
@@ -160,7 +194,12 @@ export default function ClientsPage() {
       toast.success('Client deleted');
       fetchClients();
       fetchKpis();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      // Bug silent_failures: a refused delete (staff, not admin) used to say nothing
+      const detail = e?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : 'Failed to delete client');
+    }
   };
 
   const toggleSelect = (id) => {
@@ -189,6 +228,19 @@ export default function ClientsPage() {
       fetchClients();
       fetchKpis();
     } catch (e) { console.error(e); toast.error('Bulk archive failed'); }
+    setBulkLoading(false);
+  };
+
+  // Bug no_unarchive_control: the Archived view offers Unarchive
+  const handleBulkUnarchive = async () => {
+    setBulkLoading(true);
+    try {
+      await api.post('/clients/bulk-action', { action: 'unarchive', client_ids: [...selectedIds] });
+      toast.success(`${selectedIds.size} client(s) unarchived`);
+      setSelectedIds(new Set());
+      fetchClients();
+      fetchKpis();
+    } catch (e) { console.error(e); toast.error('Unarchive failed'); }
     setBulkLoading(false);
   };
 
@@ -228,7 +280,7 @@ export default function ClientsPage() {
       icon: Calendar,
       color: 'text-amber-600',
       bg: 'bg-amber-50',
-      onClick: () => setRebookingFilter('due'),
+      onClick: () => setRebookingFilter('due_this_week'),   // bug due_to_rebook_tile_sends_invalid_filter
     },
     { label: 'Outstanding Balance', value: formatPrice(kpis.outstanding_balance || 0), icon: DollarSign, color: 'text-red-600', bg: 'bg-red-50' },
     {
@@ -241,12 +293,10 @@ export default function ClientsPage() {
     },
   ] : [];
 
-  const isRebookingSoon = (dateStr) => {
-    if (!dateStr) return false;
-    try {
-      return differenceInDays(parseISO(dateStr), new Date()) <= 7;
-    } catch { return false; }
-  };
+  // Due on or before today + 7 (calendar days), the same window as Due This Week
+  // and the Due to Rebook tile (bug rebook_due_highlight_off_by_one)
+  const rebookHorizon = format(addDays(new Date(), 7), 'yyyy-MM-dd');
+  const isRebookingSoon = (dateStr) => !!dateStr && String(dateStr).slice(0, 10) <= rebookHorizon;
 
   return (
     <div data-testid="clients-page" className="space-y-6 animate-fade-in">
@@ -308,7 +358,7 @@ export default function ClientsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
                 data-testid="client-search-input"
-                placeholder="Search by name, email, or phone..."
+                placeholder="Search by name, phone, email or suburb..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
@@ -346,7 +396,8 @@ export default function ClientsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Rebooking</SelectItem>
-                  <SelectItem value="due">Due This Week</SelectItem>
+                  <SelectItem value="due_this_week">Due This Week</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -377,18 +428,18 @@ export default function ClientsPage() {
                   <TableHead className="cursor-pointer select-none" onClick={() => handleSort('name')}>
                     Name <SortArrow col="name" />
                   </TableHead>
-                  <TableHead className="cursor-pointer select-none hidden md:table-cell" onClick={() => handleSort('phone')}>
-                    Phone <SortArrow col="phone" />
+                  <TableHead className="hidden md:table-cell">
+                    Phone
                   </TableHead>
-                  <TableHead className="cursor-pointer select-none hidden md:table-cell" onClick={() => handleSort('email')}>
-                    Email <SortArrow col="email" />
+                  <TableHead className="hidden md:table-cell">
+                    Email
                   </TableHead>
-                  <TableHead className="cursor-pointer select-none hidden lg:table-cell" onClick={() => handleSort('suburb')}>
-                    Suburb <SortArrow col="suburb" />
+                  <TableHead className="hidden lg:table-cell">
+                    Suburb
                   </TableHead>
                   <TableHead className="hidden lg:table-cell">VIP</TableHead>
-                  <TableHead className="cursor-pointer select-none hidden lg:table-cell" onClick={() => handleSort('rebooking_due_date')}>
-                    Rebook Due <SortArrow col="rebooking_due_date" />
+                  <TableHead className="hidden lg:table-cell">
+                    Rebook Due
                   </TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
@@ -397,7 +448,9 @@ export default function ClientsPage() {
                 {clients.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-12 text-slate-400">
-                      {loading ? 'Loading...' : 'No clients found. Add your first client.'}
+                      {loading ? 'Loading...'
+                        : hasMore ? 'No matches on this page. Press Next to keep looking.'
+                        : 'No clients found. Add your first client.'}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -470,13 +523,13 @@ export default function ClientsPage() {
       </Card>
 
       {/* Pagination */}
-      {totalPages > 1 && (
+      {(hasMore || pager.canPrev) && (
         <div className="flex items-center justify-center gap-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+          <Button variant="outline" size="sm" disabled={!pager.canPrev || loading} onClick={pager.prev}>
             Previous
           </Button>
-          <span className="text-sm text-slate-600">Page {page} of {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+          <span className="text-sm text-slate-600">Page {pager.pageNumber}</span>
+          <Button variant="outline" size="sm" disabled={!hasMore || loading} onClick={() => pager.next(nextCursor)}>
             Next
           </Button>
         </div>
@@ -535,9 +588,15 @@ export default function ClientsPage() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white rounded-xl shadow-2xl px-6 py-3 flex items-center gap-4 animate-fade-in">
           <span className="text-sm font-medium">{selectedIds.size} selected</span>
           <div className="w-px h-5 bg-slate-600" />
-          <Button size="sm" variant="ghost" className="text-white hover:bg-slate-700" onClick={handleBulkArchive} disabled={bulkLoading}>
-            <Archive className="h-4 w-4 mr-1.5" /> Archive
-          </Button>
+          {statusFilter === 'archived' ? (
+            <Button size="sm" variant="ghost" className="text-white hover:bg-slate-700" onClick={handleBulkUnarchive} disabled={bulkLoading}>
+              <ArchiveRestore className="h-4 w-4 mr-1.5" /> Unarchive
+            </Button>
+          ) : (
+            <Button size="sm" variant="ghost" className="text-white hover:bg-slate-700" onClick={handleBulkArchive} disabled={bulkLoading}>
+              <Archive className="h-4 w-4 mr-1.5" /> Archive
+            </Button>
+          )}
           <Button size="sm" variant="ghost" className="text-white hover:bg-slate-700" onClick={() => setBulkSmsOpen(true)} disabled={bulkLoading}>
             <MessageSquare className="h-4 w-4 mr-1.5" /> Send SMS
           </Button>

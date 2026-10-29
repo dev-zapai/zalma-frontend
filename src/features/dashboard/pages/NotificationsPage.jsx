@@ -17,7 +17,8 @@ import {
   MessageSquare, Send, Zap, RefreshCw, X,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { listItems } from '@/shared/lib/listResponse';
+import { listItems, listMeta } from '@/shared/lib/listResponse';
+import { actionTarget } from '../lib/actionTarget';
 import { toast } from 'sonner';
 
 /* ── Constants ────────────────────────────────────────────────────────────── */
@@ -101,6 +102,7 @@ function AllNotificationsTab() {
 
   const [seeded, setSeeded] = useState(false);
 
+  const [notifCursor, setNotifCursor] = useState(null);
   const fetchNotifs = useCallback(async () => {
     try {
       const params = { limit: 100 };
@@ -108,6 +110,7 @@ function AllNotificationsTab() {
       if (priorityFilter !== 'all') params.priority = priorityFilter;
       const res = await api.get('/notifications', { params });
       const items = listItems(res.data);
+      setNotifCursor(listMeta(res.data).nextCursor);
 
       // Auto-seed on first load if empty (generates notifications from existing data)
       if (items.length === 0 && !seeded && categoryFilter === 'all' && priorityFilter === 'all') {
@@ -125,6 +128,19 @@ function AllNotificationsTab() {
   }, [categoryFilter, priorityFilter, seeded]);
 
   useEffect(() => { fetchNotifs(); }, [fetchNotifs]);
+
+  // Fix 05: older notifications load on demand instead of reading the whole history.
+  const loadMoreNotifs = async () => {
+    if (!notifCursor) return;
+    try {
+      const params = { limit: 100, cursor: notifCursor };
+      if (categoryFilter !== 'all') params.category = categoryFilter;
+      if (priorityFilter !== 'all') params.priority = priorityFilter;
+      const res = await api.get('/notifications', { params });
+      setNotifications(prev => [...prev, ...listItems(res.data)]);
+      setNotifCursor(listMeta(res.data).nextCursor);
+    } catch (e) { console.error(e); }
+  };
 
   const markRead = async (id) => {
     try { await api.put(`/notifications/${id}/read`); fetchNotifs(); } catch { }
@@ -150,6 +166,10 @@ function AllNotificationsTab() {
       navigate(`/dashboard/staff/member/${n.entity_id}`);
     } else if (n.entity_type === 'invitation') {
       navigate('/dashboard/staff');
+    } else if (n.entity_type === 'waitlist_entry') {
+      navigate('/dashboard/waitlist');                // bug stored_notification_click_dead
+    } else if (n.entity_type === 'appointment_transfer') {
+      navigate('/dashboard/transfers');
     }
   };
 
@@ -223,6 +243,11 @@ function AllNotificationsTab() {
                   )}
                 </div>
               ))}
+              {notifCursor && (
+                <div className="py-3 text-center">
+                  <Button variant="outline" size="sm" onClick={loadMoreNotifs}>Load more</Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -233,21 +258,21 @@ function AllNotificationsTab() {
 
 /* ── Tab B: Action Required ───────────────────────────────────────────────── */
 
-function ActionRequiredTab() {
+function ActionRequiredTab({ onCountChange }) {
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({ total: 0, high: 0, medium: 0, low: 0 });
   const [loading, setLoading] = useState(true);
-  const [dismissed, setDismissed] = useState(new Set());
 
   const fetchItems = useCallback(async () => {
     try {
       const res = await api.get('/g/notifications/action-items');
       setItems(res.data.items || []);
       setSummary(res.data.summary || { total: 0, high: 0, medium: 0, low: 0 });
+      onCountChange?.(res.data.summary?.total || 0);
     } catch (e) { console.error(e); }
     setLoading(false);
-  }, []);
+  }, [onCountChange]);
 
   useEffect(() => {
     fetchItems();
@@ -261,11 +286,15 @@ function ActionRequiredTab() {
     try {
       await api.post('/g/notifications/action-items/dismiss', { item_id: item.id });
       setItems(prev => prev.filter(i => i.id !== item.id));
-      setSummary(prev => ({
-        ...prev,
-        total: Math.max(0, (prev.total || 0) - 1),
-        [item.priority]: Math.max(0, (prev[item.priority] || 0) - 1),
-      }));
+      setSummary(prev => {
+        const next = {
+          ...prev,
+          total: Math.max(0, (prev.total || 0) - 1),
+          [item.priority]: Math.max(0, (prev[item.priority] || 0) - 1),
+        };
+        onCountChange?.(next.total);                   // bug action_tab_badge_stale_after_done
+        return next;
+      });
       toast.success('Marked as done');
     } catch {
       toast.error('Failed to mark as done');
@@ -289,21 +318,17 @@ function ActionRequiredTab() {
       } else if (action === 'call') {
         if (item.context?.phone) window.open(`tel:${item.context.phone}`);
         return;
-      } else if (action === 'generate_receipt' || action === 'check_status' || action === 'assign_staff') {
-        navigate(`/dashboard/appointments/${item.entity_id}/detail`);
-        return;
-      } else if (action === 'add_email' || action === 'complete_profile' || action === 'review_profile' || action === 'flag_client') {
-        navigate(`/dashboard/clients/${item.context?.client_id || item.entity_id}`);
-        return;
-      } else if (action === 'update_record') {
-        navigate(`/dashboard/pets/${item.context?.pet_id || item.entity_id}`);
-        return;
       } else if (action === 'acknowledge') {
-        setDismissed(prev => new Set([...prev, item.id]));
+        // bug dismiss_keeps_summary_count: Dismiss is "done for today", the
+        // same day-scoped dismissal, so the count drops and it stays gone on reload
+        await handleMarkDone(item);
         return;
-      } else if (action === 'reschedule') {
-        navigate(`/dashboard/appointments/${item.entity_id}/detail`);
-        return;
+      } else {
+        const target = actionTarget(item, action);
+        if (target) {
+          navigate(target);
+          return;
+        }
       }
       fetchItems();
     } catch (e) {
@@ -327,10 +352,11 @@ function ActionRequiredTab() {
     acknowledge: { label: 'Dismiss', variant: 'ghost', className: 'text-slate-500' },
     flag_client: { label: 'Flag Client', variant: 'outline', className: 'text-red-600 border-red-200 hover:bg-red-50' },
     reschedule: { label: 'Reschedule', variant: 'outline', className: '' },
-    send_reminder: { label: 'Send Reminder', variant: 'outline', className: '' },
+    send_reminder: { label: 'Open Receipt', variant: 'outline', className: '' },
+    open_receipt: { label: 'Open Receipt', variant: 'outline', className: '' },
   };
 
-  const visibleItems = items.filter(i => !dismissed.has(i.id));
+  const visibleItems = items;
   const highItems = visibleItems.filter(i => i.priority === 'high');
   const mediumItems = visibleItems.filter(i => i.priority === 'medium');
   const lowItems = visibleItems.filter(i => i.priority === 'low');
@@ -455,13 +481,23 @@ function AutomationsTab() {
       .catch(() => {});
   }, []);
 
+  const [logCursor, setLogCursor] = useState(null);
   useEffect(() => {
     setLoadingLog(true);
     api.get('/g/notifications/communication-log', { params: { status: logStatus, limit: 50 } })
-      .then(r => setCommLog(r.data.items || []))
+      .then(r => { setCommLog(listItems(r.data)); setLogCursor(listMeta(r.data).nextCursor); })
       .catch(() => {})
       .finally(() => setLoadingLog(false));
   }, [logStatus]);
+
+  const loadMoreLog = async () => {
+    if (!logCursor) return;
+    try {
+      const r = await api.get('/g/notifications/communication-log', { params: { status: logStatus, limit: 50, cursor: logCursor } });
+      setCommLog(prev => [...prev, ...listItems(r.data)]);
+      setLogCursor(listMeta(r.data).nextCursor);
+    } catch { /* ignore */ }
+  };
 
   const updateTemplate = (key, field, value) => {
     setAutomations(prev => ({
@@ -605,6 +641,11 @@ function AutomationsTab() {
                     )}
                   </div>
                 ))}
+                {logCursor && (
+                  <div className="py-3 text-center">
+                    <Button variant="outline" size="sm" onClick={loadMoreLog}>Load more</Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -649,7 +690,7 @@ export default function NotificationsPage() {
             notifications for the salon team. All client-facing comms
             (SMS, Email, campaigns) live on the Automations page. */}
         <TabsContent value="all"><AllNotificationsTab /></TabsContent>
-        <TabsContent value="action-required"><ActionRequiredTab /></TabsContent>
+        <TabsContent value="action-required"><ActionRequiredTab onCountChange={setActionCount} /></TabsContent>
       </Tabs>
     </div>
   );

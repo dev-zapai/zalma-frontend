@@ -27,7 +27,7 @@ export default function WebsitePreview({ config, tenant }) {
   useEffect(() => {
     const fetchServices = async () => {
       try {
-        const res = await api.get('/services');
+        const res = await api.get('/services', { params: { limit: 500 } });   // every service (bug services_page_first_20_only)
         setServices((res.data?.items || res.data || []).filter(s => s.is_active));
       } catch (e) { /* ignore */ }
     };
